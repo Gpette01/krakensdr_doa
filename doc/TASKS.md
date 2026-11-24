@@ -50,7 +50,7 @@ Nothing below can be called "better" or "faster" until these exist. The repo has
 
 | ID | Task | Source | Acceptance check | Tag | Status |
 |---|---|---|---|---|---|
-| M0-01 | Add pinned requirements files for the two verified environments (Python 3.10 and 3.12) and a test requirements file. | T-17, D-44 | `uv venv` plus install resolves in both. DSP and UI import. | OFF | todo |
+| M0-01 | Add pinned requirements files for the two verified environments (Python 3.10 and 3.12) and a test requirements file. | T-17, D-44 | `uv venv` plus install resolves in both. DSP and UI import. | OFF | | done |
 | M0-02 | Add `tests/conftest.py`: synthetic plane-wave IQ generator, stub receiver, temp `_share` paths, numba cache redirect. | T-18 | One test drives the real `SignalProcessor.run()` and gets 123 degrees for a 123 degree source. Repo stays clean after the run. | OFF | todo |
 | M0-03 | Add the truth suite: estimated angle against true angle, for geometry x algorithm x angle. Known bugs are marked `xfail(strict=True)` with their finding ID. | T-02, T-06, T-07 | Suite passes. Each known bug shows as an expected failure. | OFF | todo |
 | M0-04 | Add the golden regression: about 40 stored cases with tolerances, plus `--update-golden` that prints a diff table. | T-19 | Two runs in one environment match bit for bit. Cross-environment spectra agree within 0.1 dB. | OFF | todo |
@@ -254,3 +254,4 @@ The commit for a row is the one whose subject starts with the task ID.
 
 | Task | Why we targeted it | Before | Change | Actual benefit (measured) | Verified by |
 |---|---|---|---|---|---|
+| M0-01 | The README dependency list cannot be installed (T-17), and nothing pinned the working versions. | No requirements file in the repo. The audit saw the README set fail to resolve (dash-bootstrap-components 1.1.0 needs dash>=2). | Added `requirements-py310.txt` and `requirements-py312.txt` (the two verified freeze lists), `requirements-test.txt` (pytest 8.4.2, pytest-timeout 2.4.0), and a "Running the tests" section in README.md. | `uv pip install` exits 0 for both sets. DSP import works in both (numpy 1.23.5 / scipy 1.9.3 / numba 0.56.4 on 3.10.20; numpy 1.26.4 / scipy 1.11.4 / numba 0.60.0 on 3.12.3). `import app` in a sandbox copy registers 42 callbacks in both. | Install and import commands run in both venvs. |

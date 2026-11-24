@@ -213,3 +213,24 @@ You can also 3D print a more rigid template:
 **Array Arm:** https://drive.google.com/file/d/1LsiqZolMU4og2NStPewQWhIh3z6N1zb5/view?usp=sharing
 
 **Array Middle Pentagon:** https://drive.google.com/file/d/1fn4KO7orITNJWV99XJHYu8RlZgmTl6-5/view?usp=sharing
+
+## Running the tests
+
+The tests run offline, with no KrakenSDR, no Heimdall DAQ and no network. Two Python environments are verified. Build both with `uv`, from the repository root:
+
+```bash
+uv venv -p 3.10 .venv310
+VIRTUAL_ENV=.venv310 uv pip install -r requirements-py310.txt -r requirements-test.txt
+uv venv -p 3.12 .venv312
+VIRTUAL_ENV=.venv312 uv pip install -r requirements-py312.txt -r requirements-test.txt
+```
+
+Run the fast suite in each environment. The two variables keep bytecode and the numba cache out of the source folders:
+
+```bash
+export PYTHONDONTWRITEBYTECODE=1 NUMBA_CACHE_DIR=$PWD/.numba_cache
+.venv310/bin/python -m pytest -m "not slow"
+.venv312/bin/python -m pytest -m "not slow"
+```
+
+Drop `-m "not slow"` to run everything.
