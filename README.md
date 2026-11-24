@@ -234,3 +234,9 @@ export PYTHONDONTWRITEBYTECODE=1 NUMBA_CACHE_DIR=$PWD/.numba_cache
 ```
 
 Drop `-m "not slow"` to run everything.
+
+The Node middleware tests need ports 8042 and 8021 free and take about 30 s:
+
+```bash
+node --test "_nodejs/test/*.test.js"
+```
