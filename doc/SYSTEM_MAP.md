@@ -35,7 +35,7 @@ This file describes how this fork works, as the code executes it.
 | Start, stop and kill scripts | yes | `gui_run.sh`, `kill.sh`, `util/` |
 | Tests | **none** | The repo has zero tests. |
 
-Other copies of the signal processor exist on this machine and differ from this fork: `krakenSDR-docker/app/krakensdr_doa` (112 changed lines) and `krakenThesis/app/krakensdr_doa` (30 changed lines). Which copy is deployed is an open question for the owner (see TASKS.md, open decisions).
+Other private copies of the signal processor exist. They differ from this fork by 30 to 112 changed lines. Which copy is deployed is an open question for the owner (see TASKS.md, open decisions).
 
 ## 2. Runtime topology
 
@@ -449,6 +449,6 @@ The gap between the two sets comes from one line, `sp:1327`. On scipy 1.11.4 tha
 
 ## 10. Where the audit evidence is
 
-- The three audit reports and the experiment scripts are saved outside the repo at `~/.claude/projects/-home-gp-omen-work-krakensdr-doa/audit-scratch/`.
-- `tester/driver.py`, `fake_daq.py`, `integration.py`, `ui_smoke.py` and `node_smoke.js` there are the starting point for the test suite in milestone M0.
-- `physicist/exp/e1..e15` are the experiments behind the math findings.
+- The three full audit reports and the experiment scripts are kept outside this repo, on the owner's machine.
+- The tester's driver, fake DAQ, integration and smoke scripts are the starting point for the test suite in milestone M0. That milestone brings them into the repo.
+- The physicist's 15 experiment scripts are the evidence behind the math findings marked E.

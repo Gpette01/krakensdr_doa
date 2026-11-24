@@ -14,6 +14,8 @@ This is the task list for the `optimization` branch. It was written before any c
 4. **The same commit updates this file.** It sets the task status and adds one row to the done log at the bottom.
 5. **The benefit column holds the measured result.** If a change shows no gain, the row says so.
 6. **Nothing here was tested on the real KrakenSDR.** Tasks that need the device are tagged HW and stay open until the owner tests them.
+7. **The code is the only source of truth.** Comments, README text and notes are unverified claims. A statement about behavior needs a `file:line` or a test.
+8. **Every subagent runs on Opus at high effort.**
 
 Team for each task: the physicist defines what "correct" means for math tasks, the developer writes the change, the tester verifies it against the baseline, and the orchestrator reviews the diff and commits.
 
@@ -33,13 +35,12 @@ Finding confidence, as reported by the audit: **E** = shown by experiment, **R**
 
 | # | Decision | Why it matters |
 |---|---|---|
-| 1 | Which copy is the deployment target: this fork, or the copy in `krakenSDR-docker/app/krakensdr_doa` (112 changed lines in the signal processor)? | Decides where finished work must end up. |
+| 1 | Which copy is the deployment target: this fork, or one of the other private copies (up to 112 changed lines in the signal processor)? | Decides where finished work must end up. |
 | 2 | Which Python environment does the device run? Send `conda list` or `pip freeze`. | With scipy 1.9.3 a frame costs about 29 ms here. With scipy 1.11.4 it costs about 241 ms. The real "before" number depends on this. |
 | 3 | May the output contracts change (bearing convention, confidence value, `num_corr_sources`)? | Other programs read these values. Default: keep them as they are, and only add tests. |
 | 4 | Security posture: add a login, bind the UI to localhost, or leave it open on the LAN? | The UI runs as root with no login and has reboot and shutdown buttons. |
-| 5 | Rotate the Kraken Pro key that is committed in `_nodejs/settings.json`. | The key is in the git history of this fork. |
-| 6 | Can the Heimdall DAQ source be added to this machine? | Needed to confirm the control framing bug (M3-01) and to map the DAQ layer. |
-| 7 | Stay on Dash 1.20 with `dash_devices` (a 2021 fork), or plan a UI stack move? | The current stack blocks numpy 2 and newer Python versions over time. This would be its own project. |
+| 5 | Can the Heimdall DAQ source be added to this machine? | Needed to confirm the control framing bug (M3-01) and to map the DAQ layer. |
+| 6 | Stay on Dash 1.20 with `dash_devices` (a 2021 fork), or plan a UI stack move? | The current stack blocks numpy 2 and newer Python versions over time. This would be its own project. |
 
 ## M0. Safety net (do this first)
 
@@ -169,7 +170,7 @@ Note 1: the per-stage profile and the per-frame median come from different runs,
 
 | ID | Task | Why (finding, where, confidence) | Acceptance check | Tag | Status |
 |---|---|---|---|---|---|
-| M6-01 | Remove `_nodejs/settings.json` from git. | D-05, T-24, R. It holds a Kraken Pro key, a station id and coordinates. No code reads it. | `git ls-files` no longer lists it. Owner rotates the key (decision 5). | OFF | todo |
+| M6-01 | Remove the unused `_nodejs/settings.json` from git. | D-05, T-24, R. It is an upstream sample file with a Kraken Pro key, a station id and coordinates. It came from the upstream project in 2022 and 2023, not from this fork. No code reads it, and `.gitignore` already lists it. | `git ls-files` no longer lists it. | OFF | todo |
 | M6-02 | Accept only a plain file name for recordings, stored under `_share/records`. | D-02, `cb:57-88`, `sp:1218-1229`, R. A path such as `../../etc/passwd` is opened for append as root and can be downloaded. | Unit test rejects absolute and parent paths. | OFF | todo |
 | M6-03 | Sanitize the station id on the server side. | D-37, `sp:759-770`, R. The value goes unescaped into the CSV. | Unit test with a comma and a newline. | OFF | todo |
 | M6-04 | Reject websocket connections from a foreign origin, and ask for confirmation before reboot, shutdown and reset. | D-01, `app.py:36`, `cb:381-418`, R. Any web page a LAN user visits can open the control websocket. | Test: a foreign `Origin` header is refused. | OFF | todo |
@@ -209,7 +210,7 @@ When three or more UI tasks land in one round, the viewport audit runs afterward
 
 1. **M0**, all of it. It creates the tests and the baseline that every later row needs.
 2. **M1**, then **M2**: bugs before anything else.
-3. **M3**, with M6-01 and M6-02 pulled forward because they are small and safe.
+3. **M3**, with M6-02 pulled forward because it is small and safe.
 4. **M4**, then **M5**.
 5. **M7** and **M8** in between, as small independent commits.
 6. DEC tasks wait for the owner decisions above. HW tasks wait for the device.
