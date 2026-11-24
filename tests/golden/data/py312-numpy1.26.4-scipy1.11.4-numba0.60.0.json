@@ -19351,6 +19351,7 @@
    "squelch_open": true
   }
  },
+ "cpu": "Intel(R) Core(TM) Ultra 9 275HX",
  "environment": "py312-numpy1.26.4-scipy1.11.4-numba0.60.0",
  "n_samples": 65536
 }

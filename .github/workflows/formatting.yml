@@ -8,6 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: isort/isort-action@v1.1.0
-      - uses: psf/black@stable
+      - uses: psf/black@24.4.2
         with:
           options: "--check --verbose"
+          version: "24.4.2"  # same version as .pre-commit-config.yaml

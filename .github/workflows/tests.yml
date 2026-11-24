@@ -1,0 +1,40 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    name: pytest (Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.10"
+            requirements: requirements-py310.txt
+          - python: "3.12"
+            requirements: requirements-py312.txt
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.19"
+      - name: Create the environment
+        run: |
+          uv venv -p ${{ matrix.python }} .venv
+          VIRTUAL_ENV=.venv uv pip install -r ${{ matrix.requirements }} -r requirements-test.txt
+      - name: Run pytest
+        run: NUMBA_CACHE_DIR=$PWD/.numba_cache .venv/bin/python -m pytest
+
+  node:
+    runs-on: ubuntu-latest
+    name: node --test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Run the middleware tests
+        run: node --test "_nodejs/test/*.test.js"

@@ -1,7 +1,8 @@
 # Golden regression: stored outputs of the run() loop, keyed by environment.
 #
 # Tiers:
-#  1. Same environment: bit-identical to the stored file of this environment.
+#  1. Same environment: bit-identical to the stored file of this environment when the CPU model is the one that
+#     recorded it. On another CPU (for example a CI runner) BLAS may take other code paths, so tier 2 applies.
 #  2. Other environments: within the gate tolerances below (numeric fields only).
 #  3. The truth suite (tests/truth) checks against physical truth and is never regenerated.
 #
@@ -34,6 +35,16 @@ def environment_id():
 
     version = f"{sys.version_info.major}{sys.version_info.minor}"
     return f"py{version}-numpy{np.__version__}-scipy{scipy.__version__}-numba{numba.__version__}"
+
+
+def cpu_model():
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return "unknown"
 
 
 def golden_path(env_id):
@@ -109,9 +120,14 @@ def stored(env_id):
         return json.load(file)["cases"]
 
 
+def recorded_cpu(env_id):
+    with open(golden_path(env_id), encoding="utf-8") as file:
+        return json.load(file)["cpu"]
+
+
 def write(env_id, records):
     DATA_DIR.mkdir(exist_ok=True)
-    document = {"environment": env_id, "n_samples": N_SAMPLES, "cases": records}
+    document = {"environment": env_id, "cpu": cpu_model(), "n_samples": N_SAMPLES, "cases": records}
     with open(golden_path(env_id), "w", encoding="utf-8") as file:
         json.dump(document, file, indent=1, sort_keys=True)
         file.write("\n")
@@ -188,6 +204,11 @@ def test_golden_matches_this_environment(current, request):
     assert golden_path(env_id).exists(), f"no golden file for {env_id}; run with --update-golden in a numeric task"
     expected = stored(env_id)
     assert sorted(current) == sorted(expected), "the case list differs from the golden file"
+    if recorded_cpu(env_id) != cpu_model():
+        problems = {label: gate_violations(label, current[label], expected[label]) for label in expected}
+        problems = {label: violations for label, violations in problems.items() if violations}
+        assert not problems, json.dumps(problems, indent=1)
+        return
     changed = [label for label in expected if current[label] != expected[label]]
     assert not changed, "not bit-identical:\n" + diff_table(
         {k: current[k] for k in changed}, {k: expected[k] for k in changed}
