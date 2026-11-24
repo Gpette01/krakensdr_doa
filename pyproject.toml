@@ -8,3 +8,11 @@ line-length = 120
 ignore = ['DUO107', 'E402', 'E501', 'E203', 'W503']
 max-line-length = 120
 count = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+timeout = 600
+markers = [
+    "slow: long-running test, excluded from the fast suite with -m 'not slow'",
+]
