@@ -38,7 +38,7 @@ def fake_web_interface():
     )
 
 
-@pytest.mark.xfail(strict=True, reason="D-30")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="D-30")
 def test_watcher_scales_custom_array_like_the_startup_path(tmp_path, monkeypatch):
     import utils
     import variables

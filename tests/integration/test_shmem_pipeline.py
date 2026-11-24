@@ -47,8 +47,10 @@ def run_pipeline(workdir):
     try:
         deadline = time.time() + 30
         while not port_file.exists():
-            assert daq.poll() is None, f"fake DAQ exited early: {daq.stdout.read()}"
-            assert time.time() < deadline, "fake DAQ never published its control port"
+            if daq.poll() is not None:
+                raise RuntimeError(f"fake DAQ exited early: {daq.stdout.read()}")
+            if time.time() > deadline:
+                raise RuntimeError("fake DAQ never published its control port")
             time.sleep(0.05)
         consumer = subprocess.Popen(
             [
@@ -77,7 +79,9 @@ def run_pipeline(workdir):
         for name in SHM_NAMES:
             # Created by this test's fake DAQ: the test skips when the names existed before it started.
             Path("/dev/shm", name).unlink(missing_ok=True)
-    assert out_json.exists(), f"consumer wrote no summary.\nconsumer: {consumer_output}\nfake DAQ: {daq_output}"
+    if not out_json.exists():
+        # Not an AssertionError, so that a broken pipeline can never count as an expected failure.
+        raise RuntimeError(f"consumer wrote no summary.\nconsumer: {consumer_output}\nfake DAQ: {daq_output}")
     summary = json.loads(out_json.read_text())
     summary["control"] = json.loads(control_log.read_text()) if control_log.exists() else []
     summary["daq_output"] = daq_output
@@ -106,6 +110,10 @@ def test_control_port_receives_init_freq_gain(pipeline):
     assert pipeline["receiver_queue"][0] == "conn-ok"
 
 
-@pytest.mark.xfail(strict=True, reason="T-03: the DSP thread dies with struct.error when the DAQ closes the FIFO")
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="T-03: the DSP thread dies with struct.error when the DAQ closes the FIFO",
+)
 def test_dsp_thread_survives_the_daq_going_away(pipeline):
     assert pipeline["dsp_thread_alive"], pipeline["dsp_thread_exceptions"]

@@ -18,7 +18,7 @@ UCA_XY_M = tuple(tuple(axis) for axis in synth.element_positions("UCA"))
 
 
 def xfail(reason):
-    return pytest.mark.xfail(strict=True, reason=reason)
+    return pytest.mark.xfail(strict=True, raises=AssertionError, reason=reason)
 
 
 def grid_cases():

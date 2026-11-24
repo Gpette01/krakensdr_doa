@@ -159,7 +159,9 @@ def run_cases(make_sp, cases, n=2**16, en_spectrum=False, prepare=None):
         pass
     finally:
         root.removeHandler(capture)
-    assert len(queue.items) == len(cases), f"{len(queue.items)} packets for {len(cases)} cases"
+    if len(queue.items) != len(cases):
+        # Not an AssertionError, so that a broken harness can never count as an expected failure.
+        raise RuntimeError(f"{len(queue.items)} packets for {len(cases)} cases")
     return [
         FrameResult(case, dict(packet), capture.for_frame(i))
         for i, (case, packet) in enumerate(zip(cases, queue.items))

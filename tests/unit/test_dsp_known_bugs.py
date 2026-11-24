@@ -16,8 +16,12 @@ from conftest import REPO_ROOT
         (2_400_000, 2**18, 12_500),
         (2_400_000, 2**20, 6_250),
         (1_024_000, 2**18, 12_500),
-        pytest.param(2_048_000, 2**16, 12_500, marks=pytest.mark.xfail(strict=True, reason="P-10, T-04")),
-        pytest.param(1_920_000, 2**16, 12_500, marks=pytest.mark.xfail(strict=True, reason="P-10, T-04")),
+        pytest.param(
+            2_048_000, 2**16, 12_500, marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-10, T-04")
+        ),
+        pytest.param(
+            1_920_000, 2**16, 12_500, marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-10, T-04")
+        ),
     ],
 )
 def test_mixing_exponential_has_the_requested_length(sample_rate, cpi, vfo_bw):
@@ -66,20 +70,22 @@ def custom_array_bounds_probe(tmp_path_factory):
         text=True,
         timeout=300,
     )
-    assert completed.returncode == 0, completed.stderr[-2000:]
+    if completed.returncode != 0:
+        # Not an AssertionError, so that a broken probe can never count as an expected failure.
+        raise RuntimeError(completed.stderr[-2000:])
     return json.loads(completed.stdout.strip().splitlines()[-1])
 
 
 @pytest.mark.parametrize(
     "coordinate_count",
-    [4, 5, pytest.param(6, marks=pytest.mark.xfail(strict=True, reason="P-22, T-08"))],
+    [4, 5, pytest.param(6, marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-22, T-08"))],
 )
 def test_custom_array_with_any_coordinate_count_stays_in_bounds(custom_array_bounds_probe, coordinate_count):
     """5 channels with 4, 5 or 6 coordinates: no write past the end of the 5-row buffer (sp:1654-1668)."""
     assert custom_array_bounds_probe[str(coordinate_count)] == [5, 360]
 
 
-@pytest.mark.xfail(strict=True, reason="P-24")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-24")
 def test_each_vfo_has_its_own_theta_list(make_sp):
     """[[]] * 16 creates one list shared by all VFOs (sp:163, 176)."""
 
