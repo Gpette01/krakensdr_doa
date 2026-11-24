@@ -79,15 +79,42 @@ def frequency_cases():
 
 
 def smoothing_cases():
+    """Accuracy with spatial smoothing (FBSS) for 1 and 2 expected sources."""
     params = []
     for algorithm in ("MUSIC", "ROOT-MUSIC"):
-        for expected_sources in (1, 4):
+        for expected_sources in (1, 2):
             label = f"ULA/{algorithm}/FBSS/sources={expected_sources}/65deg"
             case = Case(
                 label, "ULA", algorithm, [(65, 0, F_OFF)], decorrelation="FBSS", expected_sources=expected_sources
             )
-            marks = [xfail("P-09: source count not clamped after spatial smoothing")] if expected_sources == 4 else []
-            params.append(pytest.param(case, marks=marks, id=label))
+            params.append(pytest.param(case, id=label))
+    return params
+
+
+def smoothing_limit_cases():
+    """FBSS with the largest source count the UI offers (4). A correct clamp (M1-04) changes the subspace, so only
+    "a usable result and no ERROR" is required here, not accuracy."""
+    params = []
+    for algorithm in ("MUSIC", "ROOT-MUSIC"):
+        label = f"ULA/{algorithm}/FBSS/sources=4/65deg"
+        case = Case(label, "ULA", algorithm, [(65, 0, F_OFF)], decorrelation="FBSS", expected_sources=4)
+        params.append(pytest.param(case, marks=[xfail("P-09: source count not clamped after FBSS")], id=label))
+    return params
+
+
+ULA_ROOT_MUSIC_ANGLES = (20, 70, 110, 160, 200, 250, 300, 340)
+
+
+def ula_root_music_cases():
+    """ROOT-MUSIC against MUSIC on the same ULA frame (the acceptance of M2-01)."""
+    params = []
+    for angle in ULA_ROOT_MUSIC_ANGLES:
+        pair = tuple(
+            Case(f"ULA pair/{algorithm}/{angle}deg", "ULA", algorithm, [(angle, 0, F_OFF)], seed=41)
+            for algorithm in ("MUSIC", "ROOT-MUSIC")
+        )
+        mark = xfail("P-02, T-06: ULA ROOT-MUSIC folds the sign of sin(theta) and picks the other alias")
+        params.append(pytest.param(pair, marks=[mark], id=f"ULA/{angle}deg"))
     return params
 
 
@@ -107,9 +134,11 @@ GROUPS = {
     "offset": offset_cases(),
     "frequency": frequency_cases(),
     "smoothing": smoothing_cases(),
+    "smoothing_limit": smoothing_limit_cases(),
     "custom": custom_cases(),
 }
 ALL_CASES = [param.values[0] for params in GROUPS.values() for param in params]
+ALL_CASES += [case for param in ula_root_music_cases() for case in param.values[0]]
 
 
 @pytest.fixture(scope="module")
@@ -146,6 +175,23 @@ def test_array_offset_is_applied_once_with_one_sign(results, case):
     assert_true_bearing(results[case.label], ula_mirror_allowed=case.geometry == "ULA")
 
 
+@pytest.mark.parametrize("case", GROUPS["smoothing_limit"])
+def test_fbss_with_the_largest_source_count_gives_a_result(results, case):
+    result = results[case.label]
+    assert result.usable_estimate() is not None, result.describe()
+
+
+@pytest.mark.parametrize("pair", ula_root_music_cases())
+def test_ula_root_music_agrees_with_music(results, pair):
+    """Same frame, same array: ROOT-MUSIC must report the bearing MUSIC reports, within 0.5 degrees."""
+    music, root_music = (results[case.label] for case in pair)
+    music_estimate, root_estimate = music.usable_estimate(), root_music.usable_estimate()
+    assert music_estimate is not None and root_estimate is not None, (music.describe(), root_music.describe())
+    assert (
+        abs(synth.angle_error(root_estimate, music_estimate)) <= ROOT_MUSIC_TOLERANCE_DEG
+    ), f"MUSIC {music_estimate}, ROOT-MUSIC {root_estimate}"
+
+
 @xfail("P-16, T-07: 'F-B Toeplitz' has no code path in estimate_DOA")
 def test_fb_toeplitz_option_changes_the_processing(make_sp):
     """The UI offers FBTOEP (variables.py:107). If it did anything, its spectrum would differ from an unknown name."""
@@ -155,6 +201,7 @@ def test_fb_toeplitz_option_changes_the_processing(make_sp):
     ]
     fbtoep, unknown = run_cases(make_sp, cases)
     assert fbtoep.usable_estimate() is not None, fbtoep.describe()
+    assert abs(synth.angle_error(fbtoep.usable_estimate(), 123)) <= GRID_TOLERANCE_DEG, fbtoep.describe()
     assert not np.array_equal(
         fbtoep.packet["DoA Result"], unknown.packet["DoA Result"]
     ), "the FBTOEP spectrum is identical to the spectrum for an unknown method name"
