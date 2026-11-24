@@ -37,7 +37,9 @@ function portIsFree(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.once('error', () => resolve(false));
-    server.listen(port, () => server.close(() => resolve(true)));
+    // Loopback only: the probe must not open a port on the network. A middleware bound to every interface
+    // still makes this bind fail with EADDRINUSE.
+    server.listen(port, '127.0.0.1', () => server.close(() => resolve(true)));
   });
 }
 
