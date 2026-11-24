@@ -65,6 +65,8 @@ def main():
         if sum(1 for packet in dsp_queue.items if "DoA Max" in dict(packet)) >= expected:
             break
         time.sleep(0.05)
+    # The fake DAQ waits 1 s after the last frame before it sends TERMINATE, so these are the errors of the frames.
+    errors_before_terminate = [exception_line(message) for _, message in capture.records]
     time.sleep(SETTLE_AFTER_TERMINATE_S)  # the fake DAQ sends TERMINATE and closes the FIFOs meanwhile
 
     frames = []
@@ -81,6 +83,7 @@ def main():
         "init_data_iface": init_result,
         "frames": frames,
         "receiver_queue": [entry[0][0] for entry in receiver_queue.items],
+        "errors_before_terminate": errors_before_terminate,
         "errors": [exception_line(message) for _, message in capture.records],
         "dsp_thread_alive": sp.is_alive(),
         "dsp_thread_exceptions": thread_exceptions,

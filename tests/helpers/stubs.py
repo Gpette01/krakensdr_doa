@@ -17,12 +17,24 @@ class StopFrames(Exception):
 class ListQueue:
     """Replaces queue.Queue(1), which drops packets silently when full (kraken_sdr_signal_processor.py:922-928).
 
-    Each packet is copied when it is put. Packets hold live objects that the next frame changes in place
-    (the IQ header, "DoA Max List"), and the real UI reads each packet before the next frame arrives.
+    Packets are kept as the DSP puts them, so objects it shares across frames stay shared, as in the real UI
+    (finding T-14: every packet carries the same live IQ header).
     """
 
     def __init__(self):
         self.items = []
+
+    def put(self, item, block=True):
+        self.items.append(item)
+
+
+class FrozenPacketQueue(ListQueue):
+    """A ListQueue that copies each packet when it is put.
+
+    Only for tests that read the packets after the whole run, such as the golden and contract tests: the next
+    frame changes some packet objects in place ("DoA Max List", the IQ header), while the real UI reads each packet
+    before the next frame arrives.
+    """
 
     def put(self, item, block=True):
         self.items.append(copy.deepcopy(item))

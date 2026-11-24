@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from helpers import synth
-from helpers.stubs import ErrorCapture, ListQueue, StopFrames, StubReceiver
+from helpers.stubs import ErrorCapture, FrozenPacketQueue, StopFrames, StubReceiver
 
 
 @dataclass
@@ -145,7 +145,8 @@ def run_cases(make_sp, cases, n=2**16, en_spectrum=False, prepare=None):
             sp.vfo_bw[vfo] = case.vfo_bw
 
     receiver = StubReceiver(cases, n, apply_case, capture)
-    queue = ListQueue()
+    # Results are read after the whole run, so each packet is frozen when it is put.
+    queue = FrozenPacketQueue()
     sp = make_sp(queue, receiver)
     sp_holder.append(sp)
     sp.en_spectrum = en_spectrum

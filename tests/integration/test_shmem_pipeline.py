@@ -98,8 +98,9 @@ def pipeline(tmp_path_factory):
 def test_every_frame_gives_the_true_bearing(pipeline):
     assert pipeline["init_data_iface"] == 0
     frames = pipeline["frames"]
-    assert [frame["cpi_index"] for frame in frames] == list(range(N_FRAMES)), pipeline
+    assert len(frames) == N_FRAMES, pipeline
     assert all(frame["squelch_open"] and frame["doa_max"] == TRUE_DEG for frame in frames), pipeline
+    assert pipeline["errors_before_terminate"] == []
     assert pipeline["channel_number"] == 5
     assert "fake_daq: done" in pipeline["daq_output"]
 
@@ -117,3 +118,10 @@ def test_control_port_receives_init_freq_gain(pipeline):
 )
 def test_dsp_thread_survives_the_daq_going_away(pipeline):
     assert pipeline["dsp_thread_alive"], pipeline["dsp_thread_exceptions"]
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="T-14, D-20: every packet carries the same live IQ header"
+)
+def test_each_packet_carries_its_own_frame_index(pipeline):
+    assert [frame["cpi_index"] for frame in pipeline["frames"]] == list(range(N_FRAMES))
