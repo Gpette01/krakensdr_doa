@@ -92,3 +92,29 @@ def make_sp_module(tmp_path_factory):
         _point_sp_files_at(directory, monkeypatch)
         with _sp_factory() as factory:
             yield factory
+
+
+def _repository_write_marks():
+    """Existence and mtime of what a test could write into the checkout by mistake.
+
+    SignalProcessor writes <root>/_share/* and <root>/mydata.csv (kraken_sdr_signal_processor.py:97-98,228-229), the
+    UI writes <root>/_share/settings.json (kraken_web_interface.py:353-354), and imports can leave __pycache__.
+    """
+    marks = {}
+    candidates = [REPO_ROOT / "_share", REPO_ROOT / "mydata.csv"]
+    candidates += list((REPO_ROOT / "_share").rglob("*")) if (REPO_ROOT / "_share").is_dir() else []
+    for source_dir in ("_sdr", "_ui"):
+        candidates += list((REPO_ROOT / source_dir).rglob("__pycache__"))
+    for path in candidates:
+        marks[str(path.relative_to(REPO_ROOT))] = path.stat().st_mtime_ns if path.exists() else None
+    return marks
+
+
+@pytest.fixture(scope="session", autouse=True)
+def repository_is_not_written():
+    """Fails the session (as a teardown error) when any test wrote into the checkout."""
+    before = _repository_write_marks()
+    yield
+    after = _repository_write_marks()
+    changed = sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+    assert not changed, f"tests wrote into the repository: {changed}"

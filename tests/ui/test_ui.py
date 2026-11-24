@@ -2,7 +2,6 @@
 # The UI runs in a subprocess against a sandbox copy (see sandbox.py); its process calls are blocked there.
 import ast
 import json
-from pathlib import Path
 
 import pytest
 from ui import sandbox
@@ -126,8 +125,3 @@ def test_server_answers_on_loopback(tmp_path):
     for path in ("/", "/_dash-layout", "/_dash-dependencies", "/config", "/doa", "/spectrum"):
         assert results[path].get("status") == 200, (path, results[path], output[-2000:])
     assert results["/_dash-dependencies"]["callbacks"] == 42
-
-
-def test_sandbox_leaves_the_repository_alone():
-    assert not (sandbox.REPO_ROOT / "_share").exists() or (sandbox.REPO_ROOT / "_share").is_dir()
-    assert not any(Path(sandbox.REPO_ROOT, "_ui").rglob("__pycache__"))
