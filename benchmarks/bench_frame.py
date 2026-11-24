@@ -4,10 +4,18 @@ Usage, from the repository root (pin to one otherwise idle core):
     PYTHONDONTWRITEBYTECODE=1 NUMBA_CACHE_DIR=$PWD/.numba_cache \
         taskset -c 2 .venv310/bin/python benchmarks/bench_frame.py --out benchmarks/baseline/<env>.json
     ... bench_frame.py --compare benchmarks/baseline/<env>.json
+    ... bench_frame.py --ab <dir holding the reference code>      # interleaved A/B in one session
+
+For --ab, export the reference code first, for example `git archive <ref> | tar -x -C /tmp/kraken_ref`. Rounds
+alternate A (that directory) and B (this checkout), each in a fresh process.
 
 The frame time is the `update_rate` the DSP reports itself (kraken_sdr_signal_processor.py:365,906-908): from the
 end of frame acquisition to just before the packet is queued. Shared-memory copy time is not included.
-A change counts as real only if a median moves by more than max(5 %, 3 x MAD) (median absolute deviation).
+
+Comparison rule (MAD = median absolute deviation of the frame times):
+  - The two runs must come from the same Python, numpy, scipy and numba versions and the same CPU model.
+  - A run is invalid if its MAD is more than 2 x the baseline MAD: the machine was too noisy to judge.
+  - Otherwise a change counts only if the median moves by more than max(5 % of the baseline median, 3 x baseline MAD).
 """
 
 import argparse
@@ -26,12 +34,19 @@ os.environ.setdefault("NUMBA_CACHE_DIR", str(REPO_ROOT / ".numba_cache"))
 for name in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
     os.environ.setdefault(name, "1")
 sys.dont_write_bytecode = True
-for source_dir in ("tests", "_ui/_web_interface", "_sdr/_receiver", "_sdr/_signal_processing"):
-    sys.path.insert(0, str(REPO_ROOT / source_dir))
+# The harness (tests/helpers, tests/conftest.py) always comes from this checkout.
+sys.path.insert(0, str(REPO_ROOT / "tests"))
 
 import numpy as np  # noqa: E402
+from conftest import _point_sp_files_at, _sp_factory  # noqa: E402
 from helpers import synth  # noqa: E402
 from helpers.dsp import Case, run_cases  # noqa: E402
+
+SOURCE_DIRS = ("_ui/_web_interface", "_sdr/_receiver", "_sdr/_signal_processing")
+COMPARED_MACHINE_FIELDS = ("python", "numpy", "scipy", "numba", "cpu_model")
+NOISE_FACTOR = 2  # a run whose MAD exceeds 2 x the baseline MAD is invalid
+RELATIVE_LIMIT = 0.05
+MAD_LIMIT_FACTOR = 3
 
 F_OFF = synth.F_OFF
 WARMUP_FRAMES = 3  # numba compilation and lru_cache fills happen here
@@ -80,10 +95,15 @@ class StageTimer:
         return timed
 
 
+def use_code_root(code_root):
+    """Import the DSP from code_root; it goes ahead of the paths conftest.py added for this checkout."""
+    for source_dir in SOURCE_DIRS:
+        sys.path.insert(0, str(Path(code_root) / source_dir))
+
+
 def run_config(name, n, case_kwargs, en_spectrum, frames, workdir):
     import kraken_sdr_signal_processor as ksp
     import pytest
-    from conftest import _point_sp_files_at, _sp_factory
 
     timer = StageTimer()
     module_patches = {
@@ -165,22 +185,75 @@ def machine_info():
     }
 
 
+def check_comparable(baseline_machine, current_machine):
+    """Raises ValueError when two runs must not be compared."""
+    differences = [
+        f"{field}: {baseline_machine.get(field)} != {current_machine.get(field)}"
+        for field in COMPARED_MACHINE_FIELDS
+        if baseline_machine.get(field) != current_machine.get(field)
+    ]
+    if differences:
+        raise ValueError("runs are not comparable: " + "; ".join(differences))
+
+
+def verdict(old, new):
+    """Returns (verdict, limit_ms) for one config, by the rule in the module docstring."""
+    limit = max(RELATIVE_LIMIT * old["median_ms"], MAD_LIMIT_FACTOR * old["mad_ms"])
+    if new["mad_ms"] > NOISE_FACTOR * old["mad_ms"]:
+        return "invalid", limit
+    if abs(new["median_ms"] - old["median_ms"]) <= limit:
+        return "same", limit
+    return ("faster" if new["median_ms"] < old["median_ms"] else "slower"), limit
+
+
 def compare(baseline, current):
-    """Returns True when every median is within max(5 %, 3 x the larger MAD) of the baseline."""
-    all_ok = True
-    print(f"{'config':36s} {'baseline':>10s} {'now':>10s} {'limit':>8s}  verdict")
+    """Prints one row per config. Returns True when every config is "same"."""
+    check_comparable(baseline["machine"], current["machine"])
+    all_same = True
+    print(f"{'config':36s} {'baseline':>10s} {'now':>10s} {'limit':>8s} {'MAD old/new':>14s}  verdict")
     for name, old in baseline["configs"].items():
         new = current["configs"].get(name)
         if new is None:
             print(f"{name:36s} missing")
-            all_ok = False
+            all_same = False
             continue
-        limit = max(0.05 * old["median_ms"], 3 * max(old["mad_ms"], new["mad_ms"]))
-        ok = abs(new["median_ms"] - old["median_ms"]) <= limit
-        all_ok = all_ok and ok
-        verdict = "same" if ok else ("faster" if new["median_ms"] < old["median_ms"] else "slower")
-        print(f"{name:36s} {old['median_ms']:10.2f} {new['median_ms']:10.2f} {limit:8.2f}  {verdict}")
-    return all_ok
+        result, limit = verdict(old, new)
+        all_same = all_same and result == "same"
+        mads = f"{old['mad_ms']:.2f}/{new['mad_ms']:.2f}"
+        print(f"{name:36s} {old['median_ms']:10.2f} {new['median_ms']:10.2f} {limit:8.2f} {mads:>14s}  {result}")
+    return all_same
+
+
+def summarize_rounds(rounds):
+    """Merges the per-round results of one side of an A/B run: medians of the per-round medians and MADs."""
+    merged = {"machine": rounds[0]["machine"], "configs": {}}
+    for name in rounds[0]["configs"]:
+        per_round = [one_round["configs"][name] for one_round in rounds]
+        merged["configs"][name] = {
+            "median_ms": statistics.median(stats["median_ms"] for stats in per_round),
+            "mad_ms": statistics.median(stats["mad_ms"] for stats in per_round),
+            "round_medians_ms": [stats["median_ms"] for stats in per_round],
+        }
+    return merged
+
+
+def run_ab(reference_root, rounds, frames, only, workdir):
+    """Alternates A (reference_root) and B (this checkout), each in a fresh process, then compares B against A."""
+    sides = {"A": [], "B": []}
+    for round_index in range(rounds):
+        for side, code_root in (("A", reference_root), ("B", REPO_ROOT)):
+            out = Path(workdir) / f"{side}{round_index}.json"
+            command = [sys.executable, __file__, "--code-root", str(code_root), "--frames", str(frames)]
+            command += ["--out", str(out)]
+            for text in only or []:
+                command += ["--only", text]
+            print(f"round {round_index + 1}/{rounds}: {side} = {code_root}", flush=True)
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+            sides[side].append(json.loads(out.read_text()))
+    a, b = summarize_rounds(sides["A"]), summarize_rounds(sides["B"])
+    for name in a["configs"]:
+        print(f"{name:36s} A {a['configs'][name]['round_medians_ms']}  B {b['configs'][name]['round_medians_ms']}")
+    return compare(a, b)
 
 
 def main():
@@ -189,8 +262,21 @@ def main():
     parser.add_argument("--only", action="append", help="run only configs whose name contains this text")
     parser.add_argument("--out", help="write the result JSON here")
     parser.add_argument("--compare", help="baseline JSON to compare the medians against")
+    parser.add_argument("--ab", help="directory holding the reference code (A); runs an interleaved A/B comparison")
+    parser.add_argument("--rounds", type=int, default=4, help="A/B rounds (each round runs A, then B)")
+    parser.add_argument("--code-root", default=str(REPO_ROOT), help="import the DSP from this directory")
     args = parser.parse_args()
 
+    if args.ab:
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                same = run_ab(args.ab, args.rounds, args.frames, args.only, tmp)
+            except ValueError as error:
+                print(error)
+                sys.exit(2)
+        sys.exit(0 if same else 1)
+
+    use_code_root(args.code_root)
     result = {"machine": machine_info(), "configs": {}}
     with tempfile.TemporaryDirectory() as tmp:
         for index, (name, (n, case_kwargs, en_spectrum)) in enumerate(CONFIGS.items()):
@@ -211,7 +297,11 @@ def main():
         Path(args.out).write_text(json.dumps(result, indent=1) + "\n")
     exit_code = 0
     if args.compare:
-        exit_code = 0 if compare(json.loads(Path(args.compare).read_text()), result) else 1
+        try:
+            exit_code = 0 if compare(json.loads(Path(args.compare).read_text()), result) else 1
+        except ValueError as error:
+            print(error)
+            exit_code = 2
     sys.stdout.flush()
     # SignalProcessor threads are non-daemon `while True` loops (kraken_sdr_signal_processor.py:352).
     os._exit(exit_code)
