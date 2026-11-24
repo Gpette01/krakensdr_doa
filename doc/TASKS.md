@@ -8,14 +8,16 @@ This is the task list for the `optimization` branch. It was written before any c
 
 ## How the work runs
 
-1. **One task is one commit.** The commit message names the task ID.
+1. **One task is one commit.** The commit subject starts with the task ID, so `git log --grep='^M1-02'` finds it.
 2. **Bugs first.** A bug task starts with a test that reproduces the bug and fails. The fix must make that same test pass.
 3. **Measure, then change.** A speed or accuracy task records the "before" number first, with the benchmark from M0.
-4. **The same commit updates this file.** It sets the task status and adds one row to the done log at the bottom.
+4. **The same commit updates this file.** It sets the task status and adds one row to the done log at the bottom. A follow-up fix for a finished task uses the subject `M1-02 follow-up: ...`.
 5. **The benefit column holds the measured result.** If a change shows no gain, the row says so.
 6. **Nothing here was tested on the real KrakenSDR.** Tasks that need the device are tagged HW and stay open until the owner tests them.
 7. **The code is the only source of truth.** Comments, README text and notes are unverified claims. A statement about behavior needs a `file:line` or a test.
 8. **Every subagent runs on Opus at high effort.**
+9. **Tests are never bent to pass.** No new `skip`, no loosened tolerance, and no regenerated truth data to make a change look good. Golden files change only in tasks whose purpose is numeric.
+10. **Nothing in this work may run the start, stop or kill scripts, or the reboot, shutdown, restart and reconfigure callbacks.** Script tasks are checked with `bash -n` and a linter only. Test servers bind to `127.0.0.1` and make no outbound connections.
 
 Team for each task: the physicist defines what "correct" means for math tasks, the developer writes the change, the tester verifies it against the baseline, and the orchestrator reviews the diff and commits.
 
@@ -134,6 +136,9 @@ Each of these makes the DSP produce no result, or stop, without telling the user
 | M3-28 | Node: guard `JSON.parse`, build JSON with `JSON.stringify`, serve `public` by absolute path. | D-39, D-04, T-22, `node:96,121-130,188`, E. `GET /` returns 404 today. | Node tests. | OFF | todo |
 | M3-29 | Stop only our own processes in `kill.sh`, and stop `miniserve` and the log sync loop too. | D-40, `kill.sh:1-18`, R. The script kills every node and php process on the host. | `shellcheck` is clean. Confirm on the device. | OFF + HW | todo |
 | M3-30 | Pass `cwd` to subprocesses, and stop changing the process working directory. | D-41, `cb:387-389,416-418,1077,1092`, R. | Unit test: the working directory is unchanged after the callback. | OFF | todo |
+| M3-31 | Send the first GAIN command only after the channel count is known. | T-27, `kwi:244`, `rx:373-386`, E for the empty message. With a channel count of 0 the GAIN message carries no gains. | Test: the first GAIN message holds one value per channel. | OFF | todo |
+| M3-32 | Make the spectrum figure reset after a reconfigure take effect. | D-42, `cb:1181-1182`, `utils:228`, R. The reset rebinds a module-local name, so the page keeps the old figure. | Test: after the reset, the pushed figure is the new one. | OFF | todo |
+| M3-33 | Fix the off-by-one at the end of `simulation_from_log.js`. | T-23, `_nodejs/simulation_from_log.js:52-54`, R. The loop reads one entry past the end. | Node test with a 3-line log. | OFF | todo |
 
 ## M4. Speed
 
@@ -158,7 +163,7 @@ Note 1: the per-stage profile and the per-frame median come from different runs,
 
 | ID | Task | Why (finding, where, confidence) | Before, from the audit | Tag | Status |
 |---|---|---|---|---|---|
-| M5-01 | Design the VFO filter to a stopband target. | P-05, `sp:1281-1318,595`, E. The filter is only 21 dB down where an adjacent channel aliases onto the wanted one. | An interferer one channel away at +30 dB takes over the bearing. | OFF | todo |
+| M5-01 | Design the VFO filter to a stopband target. | P-05, P-30, `sp:1281-1318,595`, E. The filter is only 21 dB down where an adjacent channel aliases onto the wanted one. | An interferer one channel away at +30 dB takes over the bearing. | OFF | todo |
 | M5-02 | Design the global decimation filter to a stopband target. | P-06, `sp:411`, E. It is 6 dB down at the new band edge. | 12 dB rejection at 0.6 of the new rate. | OFF | todo |
 | M5-03 | Interpolate the peak between grid points. | P-14, `sp:1036`, E. The 1 degree grid limits accuracy at every SNR. | 0.23 to 0.32 degrees RMS, against 0.01 to 0.12 with a 3-point fit. | OFF | todo |
 | M5-04 | Build the correlation matrix only from samples inside the burst. | P-17, `sp:947`, E. A burst that fills 10 % of the frame loses 4.7 dB of SNR. | 5.3 dB, against 10.0 dB when gated. | OFF | todo |
@@ -177,6 +182,7 @@ Note 1: the per-stage profile and the per-frame median come from different runs,
 | M6-05 | Node: protect `POST /settings` with a token, validate and merge the body, restrict CORS. | D-03, T-20, `node:178,186-208`, E. Any web origin can overwrite `settings.json` today. | Node test: the cross-origin POST is refused. | DEC | todo |
 | M6-06 | Node: verify TLS to the map server, and merge remote settings instead of replacing the file. | D-04, `node:105,121-130`, R. | Node test with an invalid message: the file is unchanged. | DEC | todo |
 | M6-07 | Run the UI, the file server and Node without root, and choose the bind addresses. | D-01, D-06, `gui_run.sh:14-19,46,51`, R. | Owner decision 4. Confirm on the device. | DEC + HW | todo |
+| M6-08 | Run the Heimdall ini check in a child process, not inside the root UI process. | D-52, `vars:41-60`, `kraken_web_config.py:4,59`, R. Code from outside this repo is imported into the root process. | Test with a stub checker: the result is the same and the UI process imports nothing from the DAQ tree. | OFF + HW | todo |
 
 ## M7. UI and UX
 
@@ -193,6 +199,7 @@ When three or more UI tasks land in one round, the viewport audit runs afterward
 | M7-07 | Persist the system control and beta feature toggles. | D-54, `cb:910-938`, R. | The toggles survive a restart. | OFF | todo |
 | M7-08 | Build VFO cards only for active VFOs. | D-33, R. 16 cards are always built. | Config page element count drops. | OFF | todo |
 | M7-09 | Split the config page: everyday controls, advanced DAQ settings, and system control. | D-50, R. One page mixes daily controls, expert fields and power buttons. | Owner approves a layout first. | DEC | todo |
+| M7-10 | Send a recording download only to the browser that asked for it. | D-48, `cb:79-88`, H. The shared callback may trigger the download in every open browser. | Test with two websocket clients: only the requester receives the download. | OFF | todo |
 
 ## M8. Code health
 
@@ -215,10 +222,35 @@ When three or more UI tasks land in one round, the viewport audit runs afterward
 5. **M7** and **M8** in between, as small independent commits.
 6. DEC tasks wait for the owner decisions above. HW tasks wait for the device.
 
+## Assumptions made in the owner's absence
+
+The owner asked for the full run without questions. These rules replace the open decisions until the owner says otherwise.
+
+| # | Assumption | Applies to |
+|---|---|---|
+| A1 | This fork and the `optimization` branch are the target. Other copies are not touched. | Decision 1 |
+| A2 | Both verified Python environments must pass. Speed results are reported for both. | Decision 2 |
+| A3 | Output field names, order, units and scale stay as they are. A value that is provably wrong is corrected in place. | Decision 3, M2-12 to M2-15 |
+| A4 | Security changes ship only when they cannot break a legitimate client. The rest is listed under hardware follow-up. | Decision 4, M6 |
+| A5 | The array offset keeps the sign that the grid ULA and UCA path has today. | M2-02 |
+| A6 | The UI stays on Dash 1.20 with `dash_devices`. | Decision 6 |
+| A7 | Tasks that change what another program reads go last in their milestone, so each one can be reverted alone. | M2, M6 |
+
+## Hardware follow-up
+
+Filled in during the run. Each row is something that only the real KrakenSDR, the Heimdall DAQ or a browser on the device can confirm.
+
+| Item | What to check on the device | Related task |
+|---|---|---|
+| H-01 | Send the device's Python package list and `daq_chain_config.ini`. | M0-10 |
+| H-02 | Run the benchmark on the device before and after the speed work. | M4-10 |
+| H-03 | Check for a DC offset with a terminated input. | M5-07 |
+
 ## Done log
 
 One row per finished task, added by the commit that finishes it.
 
-| Task | Commit | Why we targeted it | Before | Change | Actual benefit (measured) | Verified by |
-|---|---|---|---|---|---|---|
-| (none yet) | | | | | | |
+The commit for a row is the one whose subject starts with the task ID.
+
+| Task | Why we targeted it | Before | Change | Actual benefit (measured) | Verified by |
+|---|---|---|---|---|---|

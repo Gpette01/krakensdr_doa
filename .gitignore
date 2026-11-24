@@ -7,3 +7,7 @@ _share/
 settings.json*
 *.patch
 *.bak
+.venv*/
+.pytest_cache/
+.numba_cache/
+mydata.csv
