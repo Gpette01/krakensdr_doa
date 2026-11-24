@@ -128,8 +128,11 @@ class FrameResult:
         )
 
 
-def run_cases(make_sp, cases, n=2**16, en_spectrum=False):
-    """Process each case as one frame through SignalProcessor.run(). Returns one FrameResult per case."""
+def run_cases(make_sp, cases, n=2**16, en_spectrum=False, prepare=None):
+    """Process each case as one frame through SignalProcessor.run(). Returns one FrameResult per case.
+
+    prepare(sp, receiver), when given, is called once before run(), for example to wrap an output writer.
+    """
     capture = ErrorCapture()
     sp_holder = []
 
@@ -146,6 +149,8 @@ def run_cases(make_sp, cases, n=2**16, en_spectrum=False):
     sp = make_sp(queue, receiver)
     sp_holder.append(sp)
     sp.en_spectrum = en_spectrum
+    if prepare is not None:
+        prepare(sp, receiver)
     root = logging.getLogger()
     root.addHandler(capture)
     try:

@@ -1,4 +1,5 @@
 # Stubs that let the real SignalProcessor.run() process synthetic frames with no DAQ.
+import copy
 import logging
 import time
 
@@ -14,13 +15,17 @@ class StopFrames(Exception):
 
 
 class ListQueue:
-    """Replaces queue.Queue(1), which drops packets silently when full (kraken_sdr_signal_processor.py:922-928)."""
+    """Replaces queue.Queue(1), which drops packets silently when full (kraken_sdr_signal_processor.py:922-928).
+
+    Each packet is copied when it is put. Packets hold live objects that the next frame changes in place
+    (the IQ header, "DoA Max List"), and the real UI reads each packet before the next frame arrives.
+    """
 
     def __init__(self):
         self.items = []
 
     def put(self, item, block=True):
-        self.items.append(item)
+        self.items.append(copy.deepcopy(item))
 
 
 class ErrorCapture(logging.Handler):
