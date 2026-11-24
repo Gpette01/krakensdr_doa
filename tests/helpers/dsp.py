@@ -86,6 +86,16 @@ class Case:
         return settings
 
 
+def exception_line(message):
+    """The 'SomeError: text' line of a logged traceback, or its last non-empty line."""
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    for line in reversed(lines):
+        name = line.split(":", 1)[0]
+        if name.replace(".", "").replace("_", "").isalnum() and name.endswith(("Error", "Exception")):
+            return line[:300]
+    return lines[-1][:300] if lines else ""
+
+
 @dataclass
 class FrameResult:
     case: Case
@@ -111,7 +121,7 @@ class FrameResult:
         return self.doa_max
 
     def describe(self):
-        last_error = self.errors[-1].splitlines()[-1][:300] if self.errors else "none"
+        last_error = exception_line(self.errors[-1]) if self.errors else "none"
         return (
             f"{self.case.label}: estimate={self.doa_max} squelch_open={self.squelch_open} "
             f"errors={len(self.errors)} last_error={last_error}"
