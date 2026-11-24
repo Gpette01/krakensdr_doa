@@ -1,0 +1,183 @@
+{
+ "machine": {
+  "python": "3.12.3",
+  "numpy": "1.26.4",
+  "scipy": "1.11.4",
+  "numba": "0.60.0",
+  "cpu_model": "Intel(R) Core(TM) Ultra 9 275HX",
+  "affinity": [
+   2
+  ],
+  "governor": [
+   "powersave"
+  ],
+  "kernel": "7.0.0-43-generic",
+  "blas_threads": "1",
+  "commit": "54d4c2a",
+  "date": "2026-11-24 16:50"
+ },
+ "configs": {
+  "UCA MUSIC 12.5k N=2^18": {
+   "n_samples": 262144,
+   "active_vfos": 1,
+   "en_spectrum": false,
+   "frames": 30,
+   "warmup_ms": [
+    229.81,
+    214.46,
+    218.05
+   ],
+   "median_ms": 214.243,
+   "p90_ms": 222.55,
+   "mad_ms": 2.973,
+   "min_ms": 207.56,
+   "max_ms": 237.028,
+   "stage_median_ms": {
+    "channelize": 211.664,
+    "doa_xml": 0.147,
+    "estimate_DOA": 0.362,
+    "status_json": 0.07,
+    "welch": 1.56
+   }
+  },
+  "UCA MUSIC 12.5k N=2^20": {
+   "n_samples": 1048576,
+   "active_vfos": 1,
+   "en_spectrum": false,
+   "frames": 30,
+   "warmup_ms": [
+    243.48,
+    246.94,
+    244.2
+   ],
+   "median_ms": 245.017,
+   "p90_ms": 249.769,
+   "mad_ms": 2.76,
+   "min_ms": 237.568,
+   "max_ms": 256.544,
+   "stage_median_ms": {
+    "channelize": 236.428,
+    "doa_xml": 0.153,
+    "estimate_DOA": 0.449,
+    "status_json": 0.068,
+    "welch": 6.206
+   }
+  },
+  "UCA ROOT-MUSIC 12.5k N=2^18": {
+   "n_samples": 262144,
+   "active_vfos": 1,
+   "en_spectrum": false,
+   "frames": 30,
+   "warmup_ms": [
+    231.56,
+    210.42,
+    218.14
+   ],
+   "median_ms": 213.457,
+   "p90_ms": 222.444,
+   "mad_ms": 2.273,
+   "min_ms": 207.265,
+   "max_ms": 249.51,
+   "stage_median_ms": {
+    "channelize": 210.389,
+    "doa_xml": 0.135,
+    "estimate_DOA": 1.066,
+    "status_json": 0.066,
+    "welch": 1.441
+   }
+  },
+  "ULA MUSIC FBSS 12.5k N=2^18": {
+   "n_samples": 262144,
+   "active_vfos": 1,
+   "en_spectrum": false,
+   "frames": 30,
+   "warmup_ms": [
+    219.77,
+    223.53,
+    222.09
+   ],
+   "median_ms": 220.295,
+   "p90_ms": 225.067,
+   "mad_ms": 1.727,
+   "min_ms": 217.185,
+   "max_ms": 228.572,
+   "stage_median_ms": {
+    "channelize": 208.152,
+    "doa_xml": 0.148,
+    "estimate_DOA": 10.042,
+    "status_json": 0.068,
+    "welch": 1.585
+   }
+  },
+  "UCA MUSIC 6.25k N=2^18": {
+   "n_samples": 262144,
+   "active_vfos": 1,
+   "en_spectrum": false,
+   "frames": 30,
+   "warmup_ms": [
+    1301.88,
+    1292.53,
+    1281.38
+   ],
+   "median_ms": 1286.508,
+   "p90_ms": 1341.813,
+   "mad_ms": 27.16,
+   "min_ms": 1244.277,
+   "max_ms": 1362.242,
+   "stage_median_ms": {
+    "channelize": 1283.924,
+    "doa_xml": 0.143,
+    "estimate_DOA": 0.341,
+    "status_json": 0.064,
+    "welch": 1.576
+   }
+  },
+  "UCA MUSIC 4 VFOs 12.5k N=2^18": {
+   "n_samples": 262144,
+   "active_vfos": 4,
+   "en_spectrum": false,
+   "frames": 30,
+   "warmup_ms": [
+    866.85,
+    859.9,
+    869.89
+   ],
+   "median_ms": 876.311,
+   "p90_ms": 898.524,
+   "mad_ms": 6.844,
+   "min_ms": 863.858,
+   "max_ms": 916.973,
+   "stage_median_ms": {
+    "channelize": 871.932,
+    "doa_xml": 0.136,
+    "estimate_DOA": 1.324,
+    "status_json": 0.062,
+    "welch": 1.42
+   }
+  },
+  "UCA MUSIC 12.5k N=2^18 + spectrum": {
+   "n_samples": 262144,
+   "active_vfos": 1,
+   "en_spectrum": true,
+   "frames": 30,
+   "warmup_ms": [
+    207.65,
+    202.97,
+    211.57
+   ],
+   "median_ms": 206.855,
+   "p90_ms": 210.609,
+   "mad_ms": 1.997,
+   "min_ms": 200.025,
+   "max_ms": 215.957,
+   "stage_median_ms": {
+    "channelize": 204.204,
+    "doa_xml": 0.134,
+    "estimate_DOA": 0.313,
+    "reduce_spectrum": 0.206,
+    "status_json": 0.06,
+    "welch": 1.395
+   }
+  }
+ }
+}
