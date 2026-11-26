@@ -46,7 +46,7 @@ import requests
 # Signal processing support
 import scipy
 from iq_header import IQHeader
-from kraken_sdr_receiver import ReceiverRTLSDR
+from kraken_sdr_receiver import GET_IQ_NOT_CONNECTED, ReceiverRTLSDR
 from numba import float32, njit, vectorize
 from pyargus import directionEstimation as de
 from scipy import fft, signal
@@ -411,7 +411,10 @@ class SignalProcessor(threading.Thread):
 
                 self.data_ready = False
 
-                if not self.module_receiver.iq_samples.size and get_iq_failed:
+                if get_iq_failed == GET_IQ_NOT_CONNECTED:
+                    # No DAQ connection: the receiver backs off and logs this itself; it is not a dropped frame.
+                    pass
+                elif not self.module_receiver.iq_samples.size and get_iq_failed:
                     if not self.dropped_frames:
                         logging.error(
                             """The data frame was lost while processing was active!

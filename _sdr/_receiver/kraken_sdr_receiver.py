@@ -24,6 +24,7 @@ import logging
 import os
 import socket
 import sys
+import time
 
 # Import built-in modules
 from struct import pack
@@ -36,6 +37,12 @@ from shmemIface import inShmemIface
 from variables import AUTO_GAIN_VALUE
 
 IN_SHMEM_IFACE_READ_TIMEOUT = 5.0  # sec
+# While the DAQ is unreachable, connect attempts back off from 0.1 s to 2 s (findings T-09, D-18).
+CONNECT_BACKOFF_START_S = 0.1
+CONNECT_BACKOFF_MAX_S = 2.0
+DAQ_DOWN_SUMMARY_INTERVAL_S = 60.0
+# get_iq_online() result when there is no DAQ connection: not a lost frame.
+GET_IQ_NOT_CONNECTED = -2
 
 
 class ReceiverRTLSDR:
@@ -87,6 +94,12 @@ class ReceiverRTLSDR:
         self.ctr_iface_thread_lock = Lock()
 
         self.iq_frame_bytes = None
+        # Connect backoff and DAQ-down logging state (see connect_with_backoff)
+        self.connect_backoff_s = CONNECT_BACKOFF_START_S
+        self.next_connect_time = 0.0
+        self.failed_connects = 0
+        self.last_down_summary_time = 0.0
+        self.last_connect_error = None
         self.iq_samples = np.empty(0)
         self.iq_header = IQHeader()
         self.M = 0  # Number of receiver channels, updated after establishing connection
@@ -127,7 +140,7 @@ class ReceiverRTLSDR:
                 self.set_if_gain(self.daq_rx_gain)
         except Exception as error:
             self.receiver_connection_status = False
-            self.logger.error(f"Unexpected error: {error}")
+            self.last_connect_error = error
 
             # Re-instantiating sockets
             self.socket_inst = socket.socket()
@@ -142,6 +155,39 @@ class ReceiverRTLSDR:
             ]
         )
         self.data_que.put(que_data_packet)
+
+    def connect_with_backoff(self):
+        """eth_connect() at most once per backoff period, with one log line when the DAQ goes down or comes back
+        and one summary per minute while it stays down. Returns -1 while there is no connection."""
+        wait_s = self.next_connect_time - time.monotonic()
+        if wait_s > 0:
+            time.sleep(wait_s)
+        if self.eth_connect() == -1:
+            now = time.monotonic()
+            self.failed_connects += 1
+            if self.failed_connects == 1:
+                self.logger.warning(
+                    "DAQ control port %s:%d unreachable (%s); retrying every %.0f s at most",
+                    self.rec_ip_addr,
+                    self.ctr_iface_port,
+                    self.last_connect_error,
+                    CONNECT_BACKOFF_MAX_S,
+                )
+                self.last_down_summary_time = now
+            elif now - self.last_down_summary_time >= DAQ_DOWN_SUMMARY_INTERVAL_S:
+                self.logger.warning(
+                    "DAQ still unreachable after %d attempts (%s)", self.failed_connects, self.last_connect_error
+                )
+                self.last_down_summary_time = now
+            self.next_connect_time = now + self.connect_backoff_s
+            self.connect_backoff_s = min(2 * self.connect_backoff_s, CONNECT_BACKOFF_MAX_S)
+            return -1
+        if self.failed_connects:
+            self.logger.warning("DAQ connection established after %d failed attempts", self.failed_connects)
+        self.failed_connects = 0
+        self.connect_backoff_s = CONNECT_BACKOFF_START_S
+        self.next_connect_time = 0.0
+        return 0
 
     def eth_close(self):
         """
@@ -184,12 +230,12 @@ class ReceiverRTLSDR:
 
         # Check connection
         if not self.receiver_connection_status:
-            fail = self.eth_connect()
+            fail = self.connect_with_backoff()
             if fail:
                 # If we cannot get the new IQ frame then we zero the stored IQ header
                 self.iq_header = IQHeader()
                 self.iq_samples = np.empty(0)
-                return -1
+                return GET_IQ_NOT_CONNECTED
 
         if self.data_interface == "eth":
             self.socket_inst.sendall(str.encode("IQDownload"))  # Send iq request command
