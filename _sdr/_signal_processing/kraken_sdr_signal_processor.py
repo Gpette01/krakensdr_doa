@@ -546,8 +546,9 @@ class SignalProcessor(threading.Thread):
                             self.snrs.clear()
                             self.fm_demod_channel_list.clear()
 
-                            relative_freqs = self.spectrum[0, ::-1]
-                            real_freqs = self.module_receiver.daq_center_freq - relative_freqs
+                            real_freqs = spectrum_frequencies_hz(
+                                self.spectrum[0, :], self.module_receiver.daq_center_freq
+                            )
                             measured_spec = self.spectrum[1, :]
 
                             self.calculate_squelch(sampling_freq, N, measured_spec, real_freqs)
@@ -1332,6 +1333,15 @@ def calc_sync(iq_samples):
     iq_diffs /= iq_diffs[0]
 
     return iq_diffs
+
+
+def spectrum_frequencies_hz(relative_freqs, center_freq):
+    """Absolute frequency of each spectrum bin. relative_freqs is row 0 of the spectrum, the fftshifted axis.
+
+    No reversal: the reversed, negated axis was one bin too high (finding P-20). float64, because row 0 is float32
+    and a float32 sum would round the absolute frequency to 32 Hz.
+    """
+    return center_freq + np.asarray(relative_freqs, dtype=np.float64)
 
 
 # Reduce spectrum size for plotting purposes by taking the MAX val every few values
