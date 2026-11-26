@@ -163,7 +163,7 @@ Symbols: `M` = active antenna channels, `N` = samples per frame (`cpi_length`), 
 | 7e | Scanning vectors | `sp:1609-1668` | 360 vectors, one per degree. Cached, except for the custom array. | `complex64 (M, 360)` |
 | 7f | Estimator | `sp:995-1020` | Bartlett, Capon, MEM (`pyargus`), TNA, MUSIC, ROOT-MUSIC (local, numba). | 360 values |
 | 7g | ULA mask | `sp:1023-1033` | Forward or Backward mode sets half of the result to its minimum. | |
-| 7h | Peak | `sp:1036` | `argmax` on the 1 degree grid. ROOT-MUSIC uses the last root. | degrees |
+| 7h | Peak | `estimate_DOA` | `argmax` on the 1 degree grid. ROOT-MUSIC uses the last root. ULA: of theta and 180 - theta, Forward reports the one in [270, 360) or [0, 90), Backward the one in [90, 270), Both the smaller output angle (M2-01). | degrees |
 | 8 | Post-processing | `sp:612-631,1703` | Log scale with a -100 dB floor. Confidence = `10*log10(max/mean)`. Power = peak dB bin. | |
 | 9 | Outputs | `sp:752-900` | See section 6.3. | |
 

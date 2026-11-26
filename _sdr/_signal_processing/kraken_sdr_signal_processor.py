@@ -1115,16 +1115,21 @@ class SignalProcessor(threading.Thread):
             DOA_MUSIC_res = DOA_MUSIC(R, scanning_vectors, signal_dimension=signal_dimension)
             self.DOA = DOA_MUSIC_res
         if algorithm == "ROOT-MUSIC":
-            is_vula = True if antennas_alignment == "VULA" else False
-            doas = doa_root_music(R, signal_dimension, is_vula, inter_element_spacing, self.array_offset)
+            if antennas_alignment == "VULA":
+                doas = doa_root_music(R, signal_dimension, self.array_offset)
+            else:
+                doas = ula_root_music(
+                    R, signal_dimension, inter_element_spacing, self.ula_direction, int(self.array_offset)
+                )
             self.DOA = normalized_gaussian(self.DOA_theta, doas, DEFAULT_ROOT_MUSIC_STD_DEGREES)
             # since roots are sorted based on how close they are to the unit circle,
             # which in turn is proportional to SNR,
             # then the last element should correspond to the strongest signal
             theta_0 = doas[-1]
 
-        # ULA Array, choose bewteen the full omnidirecitonal 360 data, or forward/backward data only
-        if self.DOA_ant_alignment == "ULA":
+        # ULA Array, choose bewteen the full omnidirecitonal 360 data, or forward/backward data only.
+        # ROOT-MUSIC has already chosen its half: its Gaussian is drawn at the bearing only (finding P-02).
+        if self.DOA_ant_alignment == "ULA" and algorithm != "ROOT-MUSIC":
             thetas = (
                 np.linspace(0, 359, 360) - self.array_offset
             ) % 360  # Rotate array with offset (in reverse to compensate for rotation done in gen_scanning_vectors)
@@ -1137,7 +1142,12 @@ class SignalProcessor(threading.Thread):
                 self.DOA[thetas[270:360].astype(int)] = min_val
 
         if algorithm != "ROOT-MUSIC":
-            theta_0 = self.DOA_theta[np.argmax(self.DOA)]
+            peak = int(np.argmax(self.DOA))
+            if self.DOA_ant_alignment == "ULA" and self.ula_direction == "Both":
+                # The ULA spectrum has two mirrored, equal peaks; report the smaller output angle, as ROOT-MUSIC does,
+                # instead of whichever peak rounding makes larger.
+                peak = min(peak, (180 - 2 * int(self.array_offset) - peak) % 360)
+            theta_0 = self.DOA_theta[peak]
 
         return theta_0
 
@@ -1548,25 +1558,14 @@ def to_zero_to_2pi(angle):
     return angle
 
 
-# transform angle defined in [-pi/2, pi/2) range to [0, pi) interval
-@vectorize([float32(float32)])
-def to_zero_to_pi(angle):
-    if angle < np.float32(0.0):
-        angle *= np.float32(-1.0)
-    elif angle > np.float32(0.0):
-        angle = np.float32(np.pi) - angle
-    else:
-        pass
-    return angle
-
-
 # Root-MUSIC DoA estimator for ULA and UCA
 # A. Barabell,
 # "Improving the resolution performance of eigenstructure-based direction-finding algorithms."
 # ICASSP'83. IEEE International Conference on Acoustics, Speech, and Signal Processing. Vol. 8. IEEE, 1983.
 # doi: 10.1109/ICASSP.1983.1172124
 @njit(fastmath=True, cache=True)
-def doa_root_music(r, signal_dimension, is_vula, inter_element_spacing, array_angle_offset):
+def root_music_roots(r, signal_dimension):
+    """All 2M - 2 roots of the Root-MUSIC polynomial. Its coefficients are passed highest power first."""
     M = r.shape[0]
 
     # correlation matrix is Hermitian, so why not to use faster `eigh` solver
@@ -1583,7 +1582,14 @@ def doa_root_music(r, signal_dimension, is_vula, inter_element_spacing, array_an
     for i in range(-M + 1, M):
         p_coeff[i + (M - 1)] = np.trace(e_ct, i)
 
-    all_roots = np.roots(p_coeff)
+    return np.roots(p_coeff)
+
+
+# Root-MUSIC on the virtual array (phase mode space): arg z is the bearing itself.
+@njit(fastmath=True, cache=True)
+def doa_root_music(r, signal_dimension, array_angle_offset):
+    M = r.shape[0]
+    all_roots = root_music_roots(r, signal_dimension)
 
     candidate_roots_abs = np.abs(all_roots)
     sorted_idx = candidate_roots_abs.argsort()[(M - 1 - signal_dimension) : (M - 1)]
@@ -1591,16 +1597,48 @@ def doa_root_music(r, signal_dimension, is_vula, inter_element_spacing, array_an
     valid_roots = all_roots[sorted_idx]
     args = np.angle(valid_roots)
 
-    if is_vula:
-        doas = to_zero_to_2pi(args)
-        doas_deg = np.rad2deg(doas) + array_angle_offset
-        return doas_deg
-
-    doas = np.arcsin(args / (np.float32(inter_element_spacing * 2.0 * np.pi)))
-    doas = to_zero_to_pi(doas)
+    doas = to_zero_to_2pi(args)
     doas_deg = np.rad2deg(doas) + array_angle_offset
-
     return doas_deg
+
+
+def ula_bearing(phi_deg, ula_direction, offset):
+    """Output bearing for arcsin angle phi_deg on a ULA, which cannot tell phi from 180 - phi (finding P-02).
+
+    Forward takes the candidate in [270, 360) or [0, 90), Backward the one in [90, 270), and Both the candidate with
+    the smaller output angle, which is what the grid argmax reports.
+    """
+    a = phi_deg % 360
+    b = (180 - phi_deg) % 360
+    if abs(phi_deg) == 90:
+        chosen = a
+    elif ula_direction == "Forward":
+        chosen = a if (a >= 270 or a < 90) else b
+    elif ula_direction == "Backward":
+        chosen = a if 90 <= a < 270 else b
+    else:
+        chosen = a if (a - offset) % 360 <= (b - offset) % 360 else b
+    return (chosen - offset) % 360
+
+
+def ula_root_music(r, signal_dimension, spacing_wavelengths, ula_direction, offset):
+    """Output bearings of a ULA from Root-MUSIC, the strongest last.
+
+    arg z = 2*pi*d*sin(theta) with d the element spacing in wavelengths. Roots with |arg z| > 2*pi*d have no real
+    angle (|sin| > 1 gave arcsin = NaN and a dropped frame when d < 0.5), so the visible roots are preferred, and x is
+    clipped to [-1, 1] when fewer than signal_dimension of them exist.
+    """
+    M = r.shape[0]
+    all_roots = root_music_roots(r, signal_dimension)
+    inside = all_roots[np.argsort(np.abs(all_roots))[: M - 1]]  # the M - 1 roots inside the unit circle
+    visible_limit = 2 * np.pi * spacing_wavelengths
+    visible = np.abs(np.angle(inside)) <= visible_limit
+    # Sorted by visibility first, then by closeness to the unit circle: the last one is the strongest visible root.
+    order = np.lexsort((np.abs(inside), visible))
+    chosen = inside[order[-signal_dimension:]]
+    x = np.clip(np.angle(chosen) / visible_limit, -1.0, 1.0)
+    phi_deg = np.rad2deg(np.arcsin(x))
+    return np.array([ula_bearing(phi, ula_direction, offset) for phi in phi_deg])
 
 
 # Rather naive way to estimate SNR (in dBs) based on the assumption that largest and smallest eigenvalues

@@ -27,10 +27,8 @@ def grid_cases():
         for algorithm in ALGORITHMS:
             for angle in angles:
                 case = Case(f"{geometry}/{algorithm}/{angle}deg", geometry, algorithm, [(angle, 0, F_OFF)])
-                marks = []
-                if geometry == "ULA" and algorithm == "ROOT-MUSIC" and angle in (250, 300):
-                    marks.append(xfail("P-02, T-06: ULA ROOT-MUSIC folds the sign of sin(theta)"))
-                params.append(pytest.param(case, marks=marks, id=case.label))
+                # ULA ROOT-MUSIC at 250 and 300 degrees failed before M2-01 (P-02, T-06).
+                params.append(pytest.param(case, id=case.label))
     return params
 
 
@@ -185,8 +183,55 @@ def ula_root_music_cases():
             Case(f"ULA pair/{algorithm}/{angle}deg", "ULA", algorithm, [(angle, 0, F_OFF)], seed=41)
             for algorithm in ("MUSIC", "ROOT-MUSIC")
         )
-        mark = xfail("P-02, T-06: ULA ROOT-MUSIC folds the sign of sin(theta) and picks the other alias")
-        params.append(pytest.param(pair, marks=[mark], id=f"ULA/{angle}deg"))
+        # Failed before M2-01 (P-02, T-06): ROOT-MUSIC folded the sign of sin(theta) and picked the other alias.
+        params.append(pytest.param(pair, id=f"ULA/{angle}deg"))
+    return params
+
+
+# M2-01 expected bearings at ULA_ROOT_MUSIC_ANGLES (physicist's spec, seed 41, offset 0). A ULA cannot tell theta
+# from 180 - theta: Forward reports the candidate in [270, 360) or [0, 90), Backward the one in [90, 270), and Both the
+# candidate with the smaller output angle.
+ULA_DIRECTION_TARGETS = {
+    "Both": (20, 70, 70, 20, 200, 250, 240, 200),
+    "Forward": (20, 70, 70, 20, 340, 290, 300, 340),
+    "Backward": (160, 110, 110, 160, 200, 250, 240, 200),
+}
+EXPECTED = {}  # label -> expected bearing, for the cases whose target is not the true bearing
+
+
+def ula_direction_cases():
+    params = []
+    for direction, targets in ULA_DIRECTION_TARGETS.items():
+        for algorithm in ("MUSIC", "ROOT-MUSIC"):
+            for angle, target in zip(ULA_ROOT_MUSIC_ANGLES, targets):
+                label = f"ULA/{direction}/{algorithm}/{angle}deg"
+                case = Case(label, "ULA", algorithm, [(angle, 0, F_OFF)], seed=41, ula_direction=direction)
+                EXPECTED[label] = target
+                params.append(pytest.param(case, id=label))
+    return params
+
+
+def ula_offset_direction_cases():
+    """A source at 20 degrees with array offsets 30 and 90: Both gives 130 and 70 (spec M2-01)."""
+    params = []
+    for offset, target in ((30, 130), (90, 70)):
+        for algorithm in ("MUSIC", "ROOT-MUSIC"):
+            label = f"ULA/Both/offset{offset}/{algorithm}/20deg"
+            case = Case(label, "ULA", algorithm, [(20, 0, F_OFF)], seed=41, array_offset=offset)
+            EXPECTED[label] = target
+            params.append(pytest.param(case, id=label))
+    return params
+
+
+def ula_root_music_source_count_cases():
+    """ULA ROOT-MUSIC with 2 and 3 expected sources and one true source (tester defect 5: at d/lambda 0.29 a root
+    outside the visible region gave arcsin(|x| > 1), a NaN bearing, and every frame was dropped)."""
+    params = []
+    for expected_sources in (2, 3):
+        label = f"ULA/ROOT-MUSIC/sources={expected_sources}/65deg"
+        case = Case(label, "ULA", "ROOT-MUSIC", [(65, 0, F_OFF)], seed=41, expected_sources=expected_sources)
+        EXPECTED[label] = 65
+        params.append(pytest.param(case, id=label))
     return params
 
 
@@ -210,6 +255,9 @@ GROUPS = {
     "custom": custom_cases(),
     "overestimated": overestimated_source_cases(),
     "virtual_array": virtual_array_cases(),
+    "ula_direction": ula_direction_cases(),
+    "ula_offset_direction": ula_offset_direction_cases(),
+    "ula_root_music_source_count": ula_root_music_source_count_cases(),
 }
 ALL_CASES = [param.values[0] for params in GROUPS.values() for param in params]
 ALL_CASES += [case for param in ula_root_music_cases() for case in param.values[0]]
@@ -252,6 +300,21 @@ def test_array_offset_is_applied_once_with_one_sign(results, case):
 
 
 OVERESTIMATED_TOLERANCE_DEG = 2.0
+
+
+@pytest.mark.parametrize(
+    "case", GROUPS["ula_direction"] + GROUPS["ula_offset_direction"] + GROUPS["ula_root_music_source_count"]
+)
+def test_ula_reports_the_candidate_of_its_direction(results, case):
+    """M2-01: one rule for the ULA ambiguity on every path, and the displayed spectrum peaks at the bearing."""
+    result = results[case.label]
+    estimate = result.usable_estimate()
+    assert estimate is not None, result.describe()
+    expected = EXPECTED[case.label]
+    tolerance = ROOT_MUSIC_TOLERANCE_DEG if case.algorithm == "ROOT-MUSIC" else GRID_TOLERANCE_DEG
+    assert abs(synth.angle_error(estimate, expected)) <= tolerance, f"expected {expected}. {result.describe()}"
+    peak = int(np.argmax(result.packet["DoA Result"]))
+    assert abs(synth.angle_error(peak, estimate)) <= 1, f"spectrum peak at {peak}. {result.describe()}"
 
 
 @pytest.mark.parametrize("case", GROUPS["overestimated"])
