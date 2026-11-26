@@ -507,14 +507,19 @@ class SignalProcessor(threading.Thread):
                             (self.channel_number + (self.active_vfos * 2 + 1), N),
                             dtype=np.float32,
                         )
+                        # Welch segments over the whole frame: a periodogram of the first N samples missed later
+                        # bursts (finding P-19). A frame shorter than N gives one segment, the old periodogram.
+                        segment = min(N, self.processed_signal.shape[1])
                         for m in range(self.channel_number):  # range(1): #range(self.channel_number):
-                            f, Pxx_den = signal.periodogram(
+                            f, Pxx_den = signal.welch(
                                 self.processed_signal[m, :],
                                 sampling_freq,
+                                window="blackman",
+                                nperseg=segment,
                                 nfft=N,
+                                noverlap=0,
                                 detrend=False,
                                 return_onesided=False,
-                                window="blackman",
                                 scaling="spectrum",
                             )
                             self.spectrum[1 + m, :] = fft.fftshift(10 * np.log10(Pxx_den))
