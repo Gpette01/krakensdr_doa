@@ -4,6 +4,7 @@ usage: ui_probe.py <sandbox _ui/_web_interface dir> layout
        ui_probe.py <sandbox _ui/_web_interface dir> server <port>
        ui_probe.py <sandbox _ui/_web_interface dir> logging
        ui_probe.py <sandbox _ui/_web_interface dir> defaults
+       ui_probe.py <sandbox _ui/_web_interface dir> startup_state
 """
 
 import json
@@ -30,7 +31,7 @@ def import_ui(web_interface_dir):
     # isort: on
 
     # No DSP thread: it would connect to the DAQ control port and spin without a DAQ (T-09).
-    kraken_sdr_signal_processor.SignalProcessor.start = lambda self: None
+    kraken_sdr_signal_processor.SignalProcessor.start = lambda self: setattr(self, "start_called", True)
     import app
     import callbacks.main
 
@@ -40,6 +41,12 @@ def import_ui(web_interface_dir):
         setattr(subprocess, name, blocked)
     os.system = blocked
     return app
+
+
+def plotly_encoder():
+    import plotly
+
+    return plotly.utils.PlotlyJSONEncoder
 
 
 def walk(component, found):
@@ -144,6 +151,18 @@ def main():
             logging.getLogger(name).error("probe error from %s", name)
             logging.getLogger(name).info("probe info from %s", name)
         print(json.dumps({"ok": True}), flush=True)
+        os._exit(0)
+    if mode == "startup_state":
+        from kraken_web_config import generate_config_page_layout
+        from maindash import web_interface
+
+        page = generate_config_page_layout(web_interface)
+        facts = {
+            "active_daq_ini_cfg": web_interface.active_daq_ini_cfg,
+            "dsp_thread_started": getattr(web_interface.module_signal_processor, "start_called", False),
+            "config_page_text": json.dumps(page.to_plotly_json(), cls=plotly_encoder())[:200000],
+        }
+        print(json.dumps(facts), flush=True)
         os._exit(0)
     if mode == "defaults":
         print(json.dumps(default_settings_by_path()), flush=True)

@@ -1,3 +1,4 @@
+import configparser
 import copy
 import json
 import os
@@ -25,6 +26,14 @@ RED_COLOR = {"color": "#e74c3c"}
 
 
 def read_config_file_dict(config_fname=daq_config_filename):
+    """The DAQ ini values, or None when the file is missing or cannot be parsed (finding T-11)."""
+    try:
+        return _read_config_file_dict(config_fname)
+    except (configparser.Error, ValueError):
+        return None
+
+
+def _read_config_file_dict(config_fname):
     parser = ConfigParser()
     found = parser.read([config_fname])
     ini_data = {}

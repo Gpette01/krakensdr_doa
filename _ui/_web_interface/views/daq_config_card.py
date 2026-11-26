@@ -39,6 +39,21 @@ def get_preconfigs(config_files_path):
 def get_daq_config_card_layout():
     # Read DAQ config file
     daq_cfg_dict = web_interface.daq_ini_cfg_dict
+    if daq_cfg_dict is None:
+        # Finding T-11: without the ini there is nothing to configure, and signal processing is not running.
+        return html.Div(
+            [
+                html.H2("RF Receiver Configuration", id="init_title_c"),
+                html.Div(
+                    f"DAQ configuration missing: {daq_config_filename} was not found or could not be read. "
+                    "Signal processing is stopped. Restore the file and restart the software.",
+                    id="daq_ini_missing",
+                    className="field",
+                    style={"color": "#e74c3c"},
+                ),
+            ],
+            className="card",
+        )
 
     if daq_cfg_dict is not None:
         en_noise_src_values = [1] if daq_cfg_dict["en_noise_source_ctr"] else []

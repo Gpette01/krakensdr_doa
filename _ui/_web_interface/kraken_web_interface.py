@@ -12,6 +12,7 @@ from variables import (
     AUTO_GAIN_VALUE,
     DEFAULT_SETTINGS,
     INVALID_SETTINGS_FILE_TIMESTAMP,
+    daq_config_filename,
     setting,
 )
 
@@ -171,7 +172,20 @@ class WebInterface:
             self.module_signal_processor.vfo_demod[i] = setting(dsp_settings, "vfo_demod_" + str(i))
             self.module_signal_processor.vfo_iq[i] = setting(dsp_settings, "vfo_iq_" + str(i))
 
-        self.module_signal_processor.start()
+        # The DSP thread starts only with a usable DAQ ini: without one, startup used to raise after the thread had
+        # started, and the process hung (finding T-11).
+        self.daq_ini_cfg_dict = read_config_file_dict()
+        if self.daq_ini_cfg_dict is None:
+            self.logger.error(
+                "DAQ configuration file %s is missing or unreadable; signal processing is not started. "
+                "Restore the file and restart the software.",
+                daq_config_filename,
+            )
+            self.active_daq_ini_cfg = "missing"
+        else:
+            # Holds the string identifier of the actively loaded DAQ ini configuration
+            self.active_daq_ini_cfg = self.daq_ini_cfg_dict["config_name"]
+            self.module_signal_processor.start()
 
         #############################################
         #       UI Status and Config variables      #
@@ -199,9 +213,6 @@ class WebInterface:
         self.en_system_control = [1] if setting(dsp_settings, "en_system_control") else []
         self.en_beta_features = [1] if setting(dsp_settings, "en_beta_features") else []
 
-        self.daq_ini_cfg_dict = read_config_file_dict()
-        # "Default" # Holds the string identifier of the actively loaded DAQ ini configuration
-        self.active_daq_ini_cfg = self.daq_ini_cfg_dict["config_name"]
         self.tmp_daq_ini_cfg = "Default"
         self.daq_cfg_ini_error = ""
 
