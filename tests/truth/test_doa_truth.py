@@ -98,6 +98,31 @@ def smoothing_limit_cases():
     return params
 
 
+def overestimated_source_cases():
+    """ULA with FBSS and ONE true source at 65 degrees, 433 MHz, on frames where too many expected sources pull the
+    bearing away (seed 6 for MUSIC, seed 1 for ROOT-MUSIC; other frames can be unaffected). With 1 or 2 expected
+    sources the same frames give 65 degrees. Expected 4 is clamped to 3 by M1-04, so 3 and 4 behave alike."""
+    params = []
+    for algorithm, seed in (("MUSIC", 6), ("ROOT-MUSIC", 1)):
+        for expected_sources in (1, 2, 3, 4):
+            label = f"433MHz/ULA/{algorithm}/FBSS/sources={expected_sources}/65deg/seed{seed}"
+            case = Case(
+                label,
+                "ULA",
+                algorithm,
+                [(65, 0, F_OFF)],
+                seed=seed,
+                decorrelation="FBSS",
+                expected_sources=expected_sources,
+                center=433_000_000,
+            )
+            marks = []
+            if expected_sources >= 3:
+                marks.append(xfail("N-02 / M2-13: overestimated source count, needs the MDL estimate"))
+            params.append(pytest.param(case, marks=marks, id=label))
+    return params
+
+
 ULA_ROOT_MUSIC_ANGLES = (20, 70, 110, 160, 200, 250, 300, 340)
 
 
@@ -132,6 +157,7 @@ GROUPS = {
     "smoothing": smoothing_cases(),
     "smoothing_limit": smoothing_limit_cases(),
     "custom": custom_cases(),
+    "overestimated": overestimated_source_cases(),
 }
 ALL_CASES = [param.values[0] for params in GROUPS.values() for param in params]
 ALL_CASES += [case for param in ula_root_music_cases() for case in param.values[0]]
@@ -169,6 +195,19 @@ def test_bearing_matches_truth(results, case):
 @pytest.mark.parametrize("case", GROUPS["offset"])
 def test_array_offset_is_applied_once_with_one_sign(results, case):
     assert_true_bearing(results[case.label], ula_mirror_allowed=case.geometry == "ULA")
+
+
+OVERESTIMATED_TOLERANCE_DEG = 2.0
+
+
+@pytest.mark.parametrize("case", GROUPS["overestimated"])
+def test_overestimated_source_count_keeps_the_bearing(results, case):
+    """Today's behaviour, documented: within 2 degrees (ULA mirror allowed) only up to 2 expected sources."""
+    result = results[case.label]
+    estimate = result.usable_estimate()
+    assert estimate is not None, result.describe()
+    error = min(abs(synth.angle_error(estimate, 65)), abs(synth.angle_error(estimate, 115)))
+    assert error <= OVERESTIMATED_TOLERANCE_DEG, result.describe()
 
 
 @pytest.mark.parametrize("case", GROUPS["smoothing_limit"])
