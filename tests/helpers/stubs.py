@@ -85,6 +85,8 @@ class StubReceiver:
         index = self.next_index
         self.next_index += 1
         if index >= len(self.cases):
+            # The loop logs why it stops; that line belongs to no case.
+            self.error_capture.current_frame = index
             raise StopFrames()
         case = self.cases[index]
         self.error_capture.current_frame = index

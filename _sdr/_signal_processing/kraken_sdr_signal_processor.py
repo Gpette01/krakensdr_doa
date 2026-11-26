@@ -375,6 +375,14 @@ class SignalProcessor(threading.Thread):
                     )
                     self.last_frame_failure_log = now
                     self.frame_failures_not_logged = 0
+                # status.json is otherwise written only after a frame was acquired, so keep it current here.
+                try:
+                    self.save_processing_status()
+                except Exception:
+                    self.logger.exception("Could not write status.json")
+            except BaseException as stop:
+                self.logger.critical("The DSP thread stops: %s %s", type(stop).__name__, stop)
+                raise
             finally:
                 self.is_running = False
 
