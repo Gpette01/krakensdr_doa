@@ -25,6 +25,7 @@ VFO_SETUPS = {
     "two VFOs": ([(123, 0, synth.F_OFF), (240, 0, -300_000.0)], (synth.F_OFF, -300_000.0)),
 }
 FLOAT_TOLERANCE = 1e-6
+VFO_1_ALONE = "two VFOs, VFO 1 alone/Kraken App"
 
 CSV_FIELDS = [
     "time_ms",
@@ -147,6 +148,10 @@ def contract_cases():
             cases.append(
                 Case(f"{setup}/{data_format}", "UCA", "MUSIC", sources, seed=31, vfo_offsets=offsets, extra=extra)
             )
+    # The frame of "two VFOs" with VFO 1 alone: its doa.xml holds the diagnostics of VFO 1 (M2-08).
+    sources, offsets = VFO_SETUPS["two VFOs"]
+    extra = dict(STATION, DOA_data_format="Kraken App", en_data_record=False)
+    cases.append(Case(VFO_1_ALONE, "UCA", "MUSIC", sources, seed=31, vfo_offsets=offsets[1:], extra=extra))
     return cases
 
 
@@ -212,6 +217,32 @@ def csv_lines(text):
     lines = text.split("\n")
     assert lines[-1] == "" and all(line.endswith(" ") for line in lines[:-1]), repr(text[-50:])
     return [[field.strip() for field in line.split(",")] for line in lines[:-1]]
+
+
+def xml_diagnostics(frame):
+    text = {element.tag: element.text for element in ET.fromstring(frame["doa_xml"]).iter()}
+    return text["NUM_CORRELATED_SOURCES"], float(text["SNR_DB"])
+
+
+def test_json_diagnostics_belong_to_each_vfo(frames):
+    """M2-08 (D-37): each VFO's JSON message carries that VFO's correlated-source count and SNR, not VFO 0's."""
+    posts = frames["two VFOs/Kraken Pro Local"]["posts"]
+    expected = [xml_diagnostics(frames["two VFOs/Kraken Pro Local"]), xml_diagnostics(frames[VFO_1_ALONE])]
+    assert expected[0][1] != expected[1][1], "the two VFOs need different SNRs for this test"
+    sent = [(post["kwds"]["json"]["num_corr_sources"], post["kwds"]["json"]["snr_db"]) for post in posts]
+    assert sent == expected
+
+
+@pytest.mark.parametrize("snr_db, sent", [(math.inf, 100.0), (-math.inf, -50.0), (math.nan, -50.0), (12.5, 12.5)])
+def test_json_snr_is_always_a_number(make_sp, snr_db, sent):
+    """M2-08 (D-51): a noise eigenvalue of 0 gave SNR = inf, which is not valid JSON."""
+    sp = make_sp(None, SimpleNamespace(daq_center_freq=synth.CENTER))
+    posts = []
+    sp.pool.apply_async = lambda function, args=(), kwds=None: posts.append(kwds)
+    sp.wr_json("TEST-1", "123.0", "25.00", "-40.0", synth.CENTER, np.zeros(360), 0.0, 0.0, 0.0, 0.0, 0, 0, snr_db)
+    body = posts[0]["json"]
+    json.dumps(body, allow_nan=False)  # raises for inf and nan
+    assert body["snr_db"] == sent
 
 
 @pytest.mark.parametrize("setup", VFO_SETUPS)

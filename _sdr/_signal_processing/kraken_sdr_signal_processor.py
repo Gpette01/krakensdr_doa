@@ -83,6 +83,8 @@ NEAR_ZERO = 1e-15
 # light is a separate numeric task (M2-03 keeps this value so that the stored results stay the same).
 SPEED_OF_LIGHT_SHORTCUT = 300e6
 FRAME_FAILURE_LOG_INTERVAL_S = 10.0  # at most one traceback per 10 s when frames keep failing
+SNR_JSON_MAX_DB = 100.0  # sent for an infinite SNR (no noise measured)
+SNR_JSON_MIN_DB = -50.0  # sent for -inf or nan; 10*log10(1e-5), the floor of the M2-14 estimator
 RETUNE_TOLERANCE_HZ = 1.0  # header and UI centre frequencies closer than this are the same tuning
 
 
@@ -246,6 +248,7 @@ class SignalProcessor(threading.Thread):
         self.frame_failures_not_logged = 0
         self.number_of_correlated_sources = []
         self.snrs = []
+        self.doa_diagnostics = (0, 0.0)  # (correlated sources, SNR in dB) of the last estimate_DOA call
         self.dropped_frames = 0
         self.retune_logged = None  # (header, UI) centre frequencies of the last retune logged at DEBUG
 
@@ -695,6 +698,8 @@ class SignalProcessor(threading.Thread):
                                     max_power_level_str = "{:.1f}".format((np.maximum(-100, max_amplitude)))
 
                                     self.theta_0_list.append(theta_0)
+                                    self.number_of_correlated_sources.append(self.doa_diagnostics[0])
+                                    self.snrs.append(self.doa_diagnostics[1])
                                     self.confidence_list.append(np.max(conf_val))
                                     self.max_power_level_list.append(np.maximum(-100, max_amplitude))
                                     self.freq_list.append(write_freq)
@@ -896,8 +901,8 @@ class SignalProcessor(threading.Thread):
                                     self.heading,
                                     self.speed,
                                     self.adc_overdrive,
-                                    self.number_of_correlated_sources[0],  # maybe needs j as well
-                                    self.snrs[0],  # maybe needs j as well
+                                    self.number_of_correlated_sources[j],
+                                    self.snrs[j],
                                 )
 
                         elif self.DOA_data_format == "RDF Mapper":
@@ -1091,9 +1096,9 @@ class SignalProcessor(threading.Thread):
         # If rank of the correlation matrix is not equal to its full one,
         # then we are likely dealing with correlated sources and (or) low SNR signals
         number_of_correlated_sources = M - np.linalg.matrix_rank(R)
-        self.number_of_correlated_sources.append(number_of_correlated_sources)
         snr = SNR(R)
-        self.snrs.append(snr)
+        # Appended by the caller with the bearing, so that index j of every per-VFO list is the same VFO (D-37).
+        self.doa_diagnostics = (number_of_correlated_sources, snr)
 
         frq_ratio = vfo_freq / self.module_receiver.daq_center_freq
         inter_element_spacing = self.DOA_inter_elem_space * frq_ratio
@@ -1334,7 +1339,7 @@ class SignalProcessor(threading.Thread):
         jsonDict["doaArray"] = doaString
         jsonDict["adc_overdrive"] = adc_overdrive
         jsonDict["num_corr_sources"] = str(num_corr_sources)
-        jsonDict["snr_db"] = snr_db
+        jsonDict["snr_db"] = json_snr_db(snr_db)
 
         try:
             self.pool.apply_async(
@@ -1357,6 +1362,14 @@ class SignalProcessor(threading.Thread):
             os.path.getsize(os.path.join(os.path.join(self.root_path, self.data_recording_file_name))) / 1048576,
             2,
         )  # Convert to MB
+
+
+def json_snr_db(snr_db):
+    """The SNR as a JSON number. A noise eigenvalue of 0 gives inf (or nan), which is not valid JSON (finding D-51):
+    +inf is sent as SNR_JSON_MAX_DB, -inf and nan (no signal above the noise) as SNR_JSON_MIN_DB."""
+    if math.isfinite(snr_db):
+        return float(snr_db)
+    return SNR_JSON_MAX_DB if snr_db > 0 else SNR_JSON_MIN_DB
 
 
 def calculate_end_lat_lng(s_lat: float, s_lng: float, doa: float, my_bearing: float) -> Tuple[float, float]:
