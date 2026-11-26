@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
+from integration.shmem_lock import LOCK_PATH, try_lock
 
 HERE = Path(__file__).resolve().parent
 SHM_NAMES = ("delay_sync_iq_A", "delay_sync_iq_B")
@@ -104,6 +105,16 @@ def run_pipeline(workdir, daq_runs=((N_FRAMES, TRUE_DEG),)):
     summary["control"] = json.loads(control_log.read_text()) if control_log.exists() else []
     summary["daq_output"] = daq_output
     return summary
+
+
+@pytest.fixture(scope="module", autouse=True)
+def shared_memory_names_lock():
+    """The DAQ shared memory names are fixed, so only one test run at a time may use them (follow-up 2 to M0-06)."""
+    handle = try_lock()
+    if handle is None:
+        pytest.skip(f"another test run is using the DAQ shared memory names (lock {LOCK_PATH})")
+    yield
+    handle.close()  # closing the file releases the lock
 
 
 @pytest.fixture(scope="module")
