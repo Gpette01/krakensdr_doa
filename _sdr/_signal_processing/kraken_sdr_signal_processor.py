@@ -1289,7 +1289,9 @@ def get_exponential(freq, sample_freq, sig_len):
     # https://pysdr.org/content/filters.html
     f0 = -freq  # +10
     Ts = 1.0 / sample_freq
-    t = np.arange(0.0, Ts * sig_len, Ts)
+    # Integer sample count: a float np.arange(0, Ts * n, Ts) sometimes returns n + 1 samples (finding P-10).
+    # arange(n) * Ts gives the same values as before, sample for sample.
+    t = np.arange(sig_len) * Ts
     exponential = np.exp(2j * np.pi * f0 * t)  # this is essentially a complex sine wave
 
     return np.ascontiguousarray(exponential)

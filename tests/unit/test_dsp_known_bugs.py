@@ -16,12 +16,8 @@ from conftest import REPO_ROOT
         (2_400_000, 2**18, 12_500),
         (2_400_000, 2**20, 6_250),
         (1_024_000, 2**18, 12_500),
-        pytest.param(
-            2_048_000, 2**16, 12_500, marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-10, T-04")
-        ),
-        pytest.param(
-            1_920_000, 2**16, 12_500, marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-10, T-04")
-        ),
+        (2_048_000, 2**16, 12_500),  # failed before M1-03 (P-10, T-04)
+        (1_920_000, 2**16, 12_500),  # failed before M1-03 (P-10, T-04)
     ],
 )
 def test_mixing_exponential_has_the_requested_length(sample_rate, cpi, vfo_bw):
