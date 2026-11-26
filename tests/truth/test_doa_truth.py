@@ -361,6 +361,28 @@ def test_ula_reports_the_candidate_of_its_direction(results, case):
     assert abs(synth.angle_error(peak, estimate)) <= 1, f"spectrum peak at {peak}. {result.describe()}"
 
 
+def confidence(result):
+    assert result.usable_estimate() is not None, result.describe()
+    return float(np.max(result.packet["DoA Confidence"]))
+
+
+@pytest.mark.parametrize("angle", ULA_ROOT_MUSIC_ANGLES)
+@pytest.mark.parametrize("direction", ["Forward", "Backward"])
+def test_ula_direction_does_not_change_the_confidence(results, direction, angle):
+    """M2-15: the confidence is computed before the Forward/Backward mask; the mask used to raise it by about 3 dB."""
+    masked = confidence(results[f"ULA/{direction}/MUSIC/{angle}deg"])
+    assert masked == pytest.approx(confidence(results[f"ULA/Both/MUSIC/{angle}deg"]), abs=1e-4)
+
+
+@pytest.mark.parametrize("angle", ULA_ROOT_MUSIC_ANGLES)
+@pytest.mark.parametrize("direction", list(ULA_DIRECTION_TARGETS))
+def test_root_music_confidence_is_the_music_confidence(results, direction, angle):
+    """M2-15: ROOT-MUSIC's confidence comes from the MUSIC spectrum of the same noise subspace. It used to be the
+    peak-to-average of its own Gaussian, a constant of about 21.5 dB."""
+    root = confidence(results[f"ULA/{direction}/ROOT-MUSIC/{angle}deg"])
+    assert root == pytest.approx(confidence(results[f"ULA/{direction}/MUSIC/{angle}deg"]), abs=1e-4)
+
+
 @pytest.mark.parametrize("case", GROUPS["overestimated"])
 def test_overestimated_source_count_keeps_the_bearing(results, case):
     """Today's behaviour, documented: within 2 degrees (ULA mirror allowed) only up to 2 expected sources."""

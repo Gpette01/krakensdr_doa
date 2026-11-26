@@ -182,8 +182,11 @@ Not present anywhere in the chain: DC removal, time gating to the burst, trackin
 | Compass offset | Only used in recording file names | |
 | Bearing sent out | `360 - θ` in the CSV and Kerberos outputs, raw `θ` in XML, JSON and POST outputs | `sp:759,792,821,1118` |
 | Frequency units | UI and `settings.json` in MHz, receiver and DSP in Hz, `doa.xml` in MHz, JSON in Hz | `kwi:64-66`, `sp:1100,1200` |
+| Confidence | Peak-to-average ratio in dB of the 360-point spectrum, computed before the Forward/Backward mask (M2-15). ROOT-MUSIC uses the MUSIC spectrum of the same R and signal dimension (its drawn Gaussian gave a constant of about 21.5 dB). It is not an error estimate: see the paragraph below. | `estimate_DOA` |
 
 The absolute direction (which way is 0 degrees, clockwise or not) cannot be confirmed without the hardware. All offline tests are self-consistent with the code's own sign convention only.
+
+Confidence per algorithm (M2-15 keeps the scale; measured by the physicist on synthetic frames). The peak-to-average ratio of 360 values is at most 10log10(360) = 25.6 dB. MUSIC saturates near 22.5 dB from -5 to 20 dB SNR, so above about -5 dB it says the peak is clear, not how accurate it is. On the 1 degree grid it also changes by about 4 dB with the source's position between two grid points. Bartlett reads about 7.4 dB at every SNR (its beam is wide). Capon, MEM and TNA have their own saturation levels. ROOT-MUSIC now reads like MUSIC on the same frame; on the virtual array (UCA with ROOT-MUSIC) that is the phase-mode MUSIC spectrum, which reads lower (7.5 to 7.7 dB in the golden cases). Compare values only within one algorithm and one array. A value that tracks the angle error would need a new field (owner decision); M5-03 must keep computing this one on the 1 degree grid.
 
 ## 4. Settings and control flow
 

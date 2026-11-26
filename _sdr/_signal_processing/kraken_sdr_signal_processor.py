@@ -252,6 +252,7 @@ class SignalProcessor(threading.Thread):
         self.number_of_correlated_sources = []
         self.snrs = []
         self.doa_diagnostics = (0, 0.0)
+        self.doa_confidence = 0.0  # peak-to-average in dB of the last estimate_DOA call
         self.last_source_count_warning = -math.inf  # (correlated sources, SNR in dB) of the last estimate_DOA call
         self.dropped_frames = 0
         self.retune_logged = None  # (header, UI) centre frequencies of the last retune logged at DEBUG
@@ -691,7 +692,7 @@ class SignalProcessor(threading.Thread):
                                         continue
 
                                     doa_result_log = DOA_plot_util(self.DOA)
-                                    conf_val = calculate_doa_papr(self.DOA)
+                                    conf_val = self.doa_confidence
 
                                     self.doa_max_list[i] = theta_0
                                     update_list[i] = True
@@ -1168,10 +1169,17 @@ class SignalProcessor(threading.Thread):
             else:
                 doas = ula_root_music(R, signal_dimension, inter_element_spacing, self.ula_direction, offset)
             self.DOA = normalized_gaussian(self.DOA_theta, doas, DEFAULT_ROOT_MUSIC_STD_DEGREES)
+            # The peak-to-average of the drawn Gaussian is a constant (about 21.5 dB). The MUSIC spectrum of the same R
+            # and signal dimension has the same noise subspace (finding P-13).
+            self.doa_confidence = calculate_doa_papr(DOA_MUSIC(R, scanning_vectors, signal_dimension=signal_dimension))
             # since roots are sorted based on how close they are to the unit circle,
             # which in turn is proportional to SNR,
             # then the last element should correspond to the strongest signal
             theta_0 = doas[-1]
+
+        if algorithm != "ROOT-MUSIC":
+            # Before the Forward/Backward mask, which lowers the average and raised the value by about 3 dB (P-13).
+            self.doa_confidence = calculate_doa_papr(self.DOA)
 
         # ULA Array, choose bewteen the full omnidirecitonal 360 data, or forward/backward data only, in the array
         # frame. ROOT-MUSIC has already chosen its half: its Gaussian is drawn at the bearing only (finding P-02).
