@@ -85,6 +85,8 @@ SPEED_OF_LIGHT_SHORTCUT = 300e6
 FRAME_FAILURE_LOG_INTERVAL_S = 10.0  # at most one traceback per 10 s when frames keep failing
 SNR_JSON_MAX_DB = 100.0  # sent for an infinite SNR (no noise measured)
 SNR_JSON_MIN_DB = -50.0  # sent for -inf or nan; 10*log10(1e-5), the floor of the M2-14 estimator
+SNR_CAP_DB = 100.0  # SNR reported when the noise eigenvalues are 0
+SNR_MIN_RATIO = 1e-5  # floor of the signal-to-noise power ratio: -50 dB
 RETUNE_TOLERANCE_HZ = 1.0
 SOURCE_COUNT_WARNING_INTERVAL_S = 60.0  # at most one "more expected sources than MDL estimates" line per minute  # header and UI centre frequencies closer than this are the same tuning
 
@@ -1118,7 +1120,7 @@ class SignalProcessor(threading.Thread):
                     self.DOA_expected_num_of_sources,
                     source_count,
                 )
-        snr = SNR(R)
+        snr = SNR(raw_R, sample_count)  # before the user's decorrelation, which mixes noise and signal
         # Appended by the caller with the bearing, so that index j of every per-VFO list is the same VFO (D-37).
         self.doa_diagnostics = (number_of_correlated_sources, snr)
 
@@ -1720,18 +1722,20 @@ def fb_smoothed(R, subarray_size):
     return 0.5 * (forward + exchange @ forward.conj() @ exchange)
 
 
-# Rather naive way to estimate SNR (in dBs) based on the assumption that largest and smallest eigenvalues
-# of the correlation matrix corresponds to the powers of the signal plus noise  and noise respectively.
-# Even though it won't estimate SNR beyond dominant signal, if it is already quite small,
-# then any additional signals have even lower SNR.
-def SNR(R: np.ndarray) -> float:
-    ev = np.abs(scipy.linalg.eigvals(R))
-    ev.sort()
-    noise_power = ev[0]
-    signal_plus_noise_power = ev[-1]
-    power_ratio = (signal_plus_noise_power - noise_power) / noise_power
-    snr = 10.0 * np.log10(power_ratio)
-    return snr
+def SNR(R: np.ndarray, sample_count: int) -> float:
+    """Array (post-beamforming) SNR of the strongest signal in dB: element SNR + 10*log10(M) for one source.
+
+    Noise power = mean of the M - d smallest eigenvalues, d = max(1, MDL estimate). The smallest eigenvalue alone, as
+    used before, is biased low by a finite sample, so the SNR read about 1 dB high with 341 samples (finding P-12).
+    """
+    eigenvalues = np.linalg.eigvalsh(np.asarray(R, dtype=np.complex128))  # ascending
+    M = len(eigenvalues)
+    signal_count = max(1, mdl_source_count(R, sample_count))
+    noise_power = np.mean(eigenvalues[: M - signal_count])
+    if noise_power <= 0:
+        return SNR_CAP_DB  # no noise measured; inf is not valid in the JSON output
+    ratio = (eigenvalues[-1] - noise_power) / noise_power
+    return float(10.0 * np.log10(max(ratio, SNR_MIN_RATIO)))
 
 
 # Multimodal 360 degrees prediodic Gaussian function
