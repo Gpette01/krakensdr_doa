@@ -7,9 +7,6 @@ UCA_XY_M = tuple(tuple(axis) for axis in synth.element_positions("UCA"))
 
 # Cases whose stored output is known to be wrong today. A fix shows up as an intended change in the diff table.
 KNOWN_BUGS = {
-    "UCA/TNA/123deg/0dB": "P-01",
-    "UCA/TNA/123deg/-15dB": "P-01",
-    "ULA/TNA/65deg/0dB": "P-01",
     "ULA/ROOT-MUSIC/250deg/0dB": "P-02",
     "UCA/MUSIC/FBTOEP/211deg": "P-16",
     "offset30/UCA/MUSIC/FBA/123deg": "P-03",

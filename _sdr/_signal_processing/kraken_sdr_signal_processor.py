@@ -1345,42 +1345,15 @@ def channelize(processed_signal, freq, decimation_factor, fir_order_factor, samp
     # return decimated_signal
 
 
-# NUMBA optimized Thermal Noise Algorithm (TNA) function.
-# Based on `pyargus` DOA_Capon
-@njit(fastmath=True, cache=True)
+# Thermal Noise Algorithm (TNA): P(theta) = 1 / (a^H R^-2 a).
+# R is Hermitian, so a^H R^-2 a = ||R^-1 a||^2 and one solve covers the whole scan grid. Plain numpy: numba cannot
+# compile the `except np.linalg.LinAlgError` the old version needed (finding P-01). A singular R raises LinAlgError,
+# which the run loop logs before it drops the frame.
 def DOA_TNA(R, scanning_vectors):
-    # --> Input check
-
     if R.shape[0] != scanning_vectors.shape[0]:
-        print("ERROR: Correlation matrix dimension does not match with the antenna array dimension")
-        return np.ones(1, dtype=np.complex64) * -2
-
-    ADSINR = np.zeros(scanning_vectors.shape[1], dtype=np.complex64)
-
-    # TODO: perhaps we can store scanning_vectors in column-major order from the very begining to
-    # avoid such conversion?
-    S_ = np.asfortranarray(scanning_vectors)
-
-    # --- Calculation ---
-    try:
-        R_inv_2 = np.linalg.matrix_power(R, -2)
-    except np.linalg.LinAlgError:
-        print("ERROR: Singular or non-square matrix")
-        return np.ones(1, dtype=np.complex64) * -3
-
-    # TODO: it seems like rising correlation matrix to power benefits from added precision.
-    # This might be artifact of the testing and if it is then we can switching the whole
-    # processing chain from double to single precision for considerable performance uplift,
-    # especially on low grade hardware.
-    R_inv_2 = R_inv_2.astype(np.complex64)
-
-    for i in range(scanning_vectors.shape[1]):
-        S_theta_ = S_[:, i]
-        ADSINR[i] = np.dot(np.conj(S_theta_), np.dot(R_inv_2, S_theta_))
-
-    ADSINR = np.reciprocal(ADSINR)
-
-    return ADSINR
+        raise ValueError(f"correlation matrix size {R.shape[0]} != array size {scanning_vectors.shape[0]}")
+    R_inv_a = np.linalg.solve(R, scanning_vectors)
+    return 1.0 / np.sum(np.abs(R_inv_a) ** 2, axis=0)
 
 
 # NUMBA optimized MUSIC function. About 100x faster on the Pi 4

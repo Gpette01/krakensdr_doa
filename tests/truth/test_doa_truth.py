@@ -28,8 +28,6 @@ def grid_cases():
             for angle in angles:
                 case = Case(f"{geometry}/{algorithm}/{angle}deg", geometry, algorithm, [(angle, 0, F_OFF)])
                 marks = []
-                if algorithm == "TNA":
-                    marks.append(xfail("P-01, T-02: TNA never compiles in numba"))
                 if geometry == "ULA" and algorithm == "ROOT-MUSIC" and angle in (250, 300):
                     marks.append(xfail("P-02, T-06: ULA ROOT-MUSIC folds the sign of sin(theta)"))
                 params.append(pytest.param(case, marks=marks, id=case.label))
