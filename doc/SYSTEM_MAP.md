@@ -159,7 +159,7 @@ Symbols: `M` = active antenna channels, `N` = samples per frame (`cpi_length`), 
 | 7a | Virtual ULA transform | `sp:936-944,1528-1569` | Only for UCA with ROOT-MUSIC or decorrelation. Phase mode count `L = floor(k*r)`. | `(2L+1, N/q)` |
 | 7b | Correlation matrix | `sp:947` | `R = X X^H / Nd`. Plain numpy. | `complex128 (M, M)` |
 | 7c | Decorrelation | `sp:950-962` | FBA: `R = (R + J R* J) / 2`. TOEP: Toeplitz from diagonal means. FBSS: `pyargus`. FBTOEP was removed in M2-04; an unknown name runs as Off. | |
-| 7d | Diagnostics | `sp:968,1499-1506` | `M - matrix_rank(R)` and an eigenvalue SNR. | |
+| 7d | Diagnostics | `estimate_DOA`, `mdl_source_count` | Correlated sources (M2-13): MDL(FB-smoothed raw R, subarray M - 1) - MDL(raw R), at least 0, for a ULA and the virtual array; always 0 for a plain UCA or a custom array, which have no shifted subarrays to smooth. A warning (at most once a minute) when the expected source count exceeds the MDL estimate. An eigenvalue SNR. | |
 | 7e | Scanning vectors | `sp:1609-1668` | 360 vectors, one per degree. Cached, except for the custom array. | `complex64 (M, 360)` |
 | 7f | Estimator | `sp:995-1020` | Bartlett, Capon, MEM (`pyargus`), TNA, MUSIC, ROOT-MUSIC (local, numba). | 360 values |
 | 7g | ULA mask | `sp:1023-1033` | Forward or Backward mode sets half of the result to its minimum. | |

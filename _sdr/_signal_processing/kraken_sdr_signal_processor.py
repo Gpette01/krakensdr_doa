@@ -85,7 +85,8 @@ SPEED_OF_LIGHT_SHORTCUT = 300e6
 FRAME_FAILURE_LOG_INTERVAL_S = 10.0  # at most one traceback per 10 s when frames keep failing
 SNR_JSON_MAX_DB = 100.0  # sent for an infinite SNR (no noise measured)
 SNR_JSON_MIN_DB = -50.0  # sent for -inf or nan; 10*log10(1e-5), the floor of the M2-14 estimator
-RETUNE_TOLERANCE_HZ = 1.0  # header and UI centre frequencies closer than this are the same tuning
+RETUNE_TOLERANCE_HZ = 1.0
+SOURCE_COUNT_WARNING_INTERVAL_S = 60.0  # at most one "more expected sources than MDL estimates" line per minute  # header and UI centre frequencies closer than this are the same tuning
 
 
 class SignalProcessor(threading.Thread):
@@ -248,7 +249,8 @@ class SignalProcessor(threading.Thread):
         self.frame_failures_not_logged = 0
         self.number_of_correlated_sources = []
         self.snrs = []
-        self.doa_diagnostics = (0, 0.0)  # (correlated sources, SNR in dB) of the last estimate_DOA call
+        self.doa_diagnostics = (0, 0.0)
+        self.last_source_count_warning = -math.inf  # (correlated sources, SNR in dB) of the last estimate_DOA call
         self.dropped_frames = 0
         self.retune_logged = None  # (header, UI) centre frequencies of the last retune logged at DEBUG
 
@@ -1062,6 +1064,7 @@ class SignalProcessor(threading.Thread):
         # Calculating spatial correlation matrix
         R = corr_matrix(processed_signal)
         M = R.shape[0]
+        raw_R = R  # before the user's decorrelation, for the source count estimates
 
         if decorrelation == "FBA":
             R = de.forward_backward_avg(R)
@@ -1093,9 +1096,28 @@ class SignalProcessor(threading.Thread):
                 signal_dimension,
             )
 
-        # If rank of the correlation matrix is not equal to its full one,
-        # then we are likely dealing with correlated sources and (or) low SNR signals
-        number_of_correlated_sources = M - np.linalg.matrix_rank(R)
+        sample_count = processed_signal.shape[1]
+        if antennas_alignment in ("ULA", "VULA") and raw_R.shape[0] > 2:
+            # Spatial smoothing separates coherent sources, so the extra sources MDL finds after it were coherent.
+            # M - rank(R) was 0 for any noisy R (finding P-11).
+            raw_count = mdl_source_count(raw_R, sample_count)
+            source_count = mdl_source_count(fb_smoothed(raw_R, raw_R.shape[0] - 1), sample_count)
+            number_of_correlated_sources = max(0, source_count - raw_count)
+        else:
+            # A plain UCA or a custom array has no shifted subarrays to smooth, so coherence cannot be observed.
+            source_count = mdl_source_count(raw_R, sample_count)
+            number_of_correlated_sources = 0
+        if self.DOA_expected_num_of_sources > source_count:
+            # More expected sources than signals puts noise in the signal subspace and can move the bearing (N-02).
+            now = time.monotonic()
+            if now - self.last_source_count_warning >= SOURCE_COUNT_WARNING_INTERVAL_S:
+                self.last_source_count_warning = now
+                self.logger.warning(
+                    "Expected %d sources, but MDL estimates %d in this frame; too many expected sources can move the "
+                    "bearing.",
+                    self.DOA_expected_num_of_sources,
+                    source_count,
+                )
         snr = SNR(R)
         # Appended by the caller with the bearing, so that index j of every per-VFO list is the same VFO (D-37).
         self.doa_diagnostics = (number_of_correlated_sources, snr)
@@ -1667,6 +1689,35 @@ def ula_root_music(r, signal_dimension, spacing_wavelengths, ula_direction, offs
     x = np.clip(np.angle(chosen) / visible_limit, -1.0, 1.0)
     phi_deg = np.rad2deg(np.arcsin(x))
     return np.array([ula_bearing(phi, ula_direction, offset) for phi in phi_deg])
+
+
+def mdl_source_count(R, sample_count):
+    """Number of signals in R by the minimum description length (M. Wax and T. Kailath, "Detection of signals by
+    information theoretic criteria", IEEE Trans. ASSP 33(2), 1985).
+
+    MDL(k) = -N (M - k) ln(g / a) + k (2M - k) ln(N) / 2, where g and a are the geometric and arithmetic means of the
+    M - k smallest eigenvalues and N is the sample count; the estimate is the k in 0..M-1 with the smallest MDL.
+    """
+    M = R.shape[0]
+    eigenvalues = np.linalg.eigvalsh(np.asarray(R, dtype=np.complex128))  # ascending
+    eigenvalues = np.maximum(eigenvalues, np.finfo(np.float64).tiny)  # rounding can leave tiny negative values
+    costs = []
+    for k in range(M):
+        smallest = eigenvalues[: M - k]
+        arithmetic = np.mean(smallest)
+        geometric = np.exp(np.mean(np.log(smallest)))
+        likelihood = -sample_count * (M - k) * np.log(geometric / arithmetic)
+        costs.append(likelihood + 0.5 * k * (2 * M - k) * np.log(sample_count))
+    return int(np.argmin(costs))
+
+
+def fb_smoothed(R, subarray_size):
+    """Forward-backward spatial smoothing of a correlation matrix: the mean of its subarray_size x subarray_size
+    diagonal blocks, then forward-backward averaging."""
+    count = R.shape[0] - subarray_size + 1
+    forward = sum(R[k : k + subarray_size, k : k + subarray_size] for k in range(count)) / count
+    exchange = np.flip(np.eye(subarray_size), axis=1)
+    return 0.5 * (forward + exchange @ forward.conj() @ exchange)
 
 
 # Rather naive way to estimate SNR (in dBs) based on the assumption that largest and smallest eigenvalues
