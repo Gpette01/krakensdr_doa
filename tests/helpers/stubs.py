@@ -52,7 +52,11 @@ class ErrorCapture(logging.Handler):
         self.records = []
 
     def emit(self, record):
-        self.records.append((self.current_frame, record.getMessage()))
+        message = record.getMessage()
+        if record.exc_info:
+            # logger.exception() keeps the traceback out of the message.
+            message += "\n" + logging.Formatter().formatException(record.exc_info)
+        self.records.append((self.current_frame, message))
 
     def for_frame(self, index):
         return [message for frame, message in self.records if frame == index]

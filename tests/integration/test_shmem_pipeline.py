@@ -116,6 +116,11 @@ def test_dsp_thread_survives_the_daq_going_away(pipeline):
     assert pipeline["dsp_thread_alive"], pipeline["dsp_thread_exceptions"]
 
 
+def test_a_closed_fifo_is_not_an_error(pipeline):
+    """The closed FIFO must read as a disconnect, not raise struct.error inside the frame loop (T-03, M1-10)."""
+    assert [error for error in pipeline["errors"] if "unpack" in error] == []
+
+
 @pytest.mark.xfail(
     strict=True, raises=AssertionError, reason="T-14, D-20: every packet carries the same live IQ header"
 )

@@ -211,11 +211,17 @@ class inShmemIface:
             return -1
 
     def read_fw_ctr_fifo(self):
+        """Next control byte from the DAQ, or None when none arrives within the read timeout.
+
+        A zero-byte read means the DAQ closed its end of the FIFO. It is treated like "no byte yet": the caller gets
+        None (a lost frame), and a DAQ that reopens the FIFO is read again. It used to raise struct.error (T-03).
+        """
         for _ in range(self.num_read_attempts):
             try:
-                signal = unpack("B", os.read(self.fw_ctr_fifo, 1))[0]
+                data = os.read(self.fw_ctr_fifo, 1)
             except BlockingIOError:
-                time.sleep(SLEEP_TIME_BETWEEN_READ_ATTEMPTS)
-            else:
-                return signal
+                data = b""
+            if data:
+                return unpack("B", data)[0]
+            time.sleep(SLEEP_TIME_BETWEEN_READ_ATTEMPTS)
         return None
