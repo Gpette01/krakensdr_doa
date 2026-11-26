@@ -83,6 +83,7 @@ NEAR_ZERO = 1e-15
 # light is a separate numeric task (M2-03 keeps this value so that the stored results stay the same).
 SPEED_OF_LIGHT_SHORTCUT = 300e6
 FRAME_FAILURE_LOG_INTERVAL_S = 10.0  # at most one traceback per 10 s when frames keep failing
+RETUNE_TOLERANCE_HZ = 1.0  # header and UI centre frequencies closer than this are the same tuning
 
 
 class SignalProcessor(threading.Thread):
@@ -246,6 +247,7 @@ class SignalProcessor(threading.Thread):
         self.number_of_correlated_sources = []
         self.snrs = []
         self.dropped_frames = 0
+        self.retune_logged = None  # (header, UI) centre frequencies of the last retune logged at DEBUG
 
     def warn_once(self, key, message, *args):
         """Logs a warning the first time `key` is seen."""
@@ -552,26 +554,42 @@ class SignalProcessor(threading.Thread):
                             self.snrs.clear()
                             self.fm_demod_channel_list.clear()
 
-                            real_freqs = spectrum_frequencies_hz(
-                                self.spectrum[0, :], self.module_receiver.daq_center_freq
-                            )
+                            # The frequency the DAQ was tuned to for this frame. During a retune, frames still in
+                            # flight carry the old one while the UI already holds the new one (finding P-27).
+                            ui_center_freq = self.module_receiver.daq_center_freq
+                            frame_center_freq = self.module_receiver.iq_header.rf_center_freq or ui_center_freq
+                            retune_in_flight = abs(frame_center_freq - ui_center_freq) >= RETUNE_TOLERANCE_HZ
+                            if retune_in_flight and self.retune_logged != (frame_center_freq, ui_center_freq):
+                                self.retune_logged = (frame_center_freq, ui_center_freq)
+                                self.logger.debug(
+                                    "Frame tuned to %.0f Hz while the UI is at %.0f Hz (retune in flight); "
+                                    "VFOs outside this frame's band are skipped.",
+                                    frame_center_freq,
+                                    ui_center_freq,
+                                )
+                            real_freqs = spectrum_frequencies_hz(self.spectrum[0, :], frame_center_freq)
                             measured_spec = self.spectrum[1, :]
 
                             self.calculate_squelch(sampling_freq, N, measured_spec, real_freqs)
 
                             for i in range(active_vfos):
+                                if retune_in_flight:
+                                    # Skip a VFO outside this frame's band, and keep it where the user put it: one
+                                    # stale frame used to move every such VFO to the centre.
+                                    if abs(self.vfo_freq[i] - frame_center_freq) > (sampling_freq - self.vfo_bw[i]) / 2:
+                                        continue
                                 # If chanenl freq is out of bounds for the current tuned bandwidth, reset to the middle freq
-                                if abs(self.vfo_freq[i] - self.module_receiver.daq_center_freq) > sampling_freq / 2:
-                                    self.vfo_freq[i] = self.module_receiver.daq_center_freq
+                                elif abs(self.vfo_freq[i] - frame_center_freq) > sampling_freq / 2:
+                                    self.vfo_freq[i] = frame_center_freq
 
                                 freq = (
-                                    self.vfo_freq[i] - self.module_receiver.daq_center_freq
+                                    self.vfo_freq[i] - frame_center_freq
                                 )  # ch_freq is relative to -sample_freq/2 : sample_freq/2, so correct for that and get the actual freq
 
                                 if self.vfo_mode == "Auto":  # Mode 1 is Auto Max Mode
                                     max_index = self.spectrum[1, :].argmax()
                                     freq = self.spectrum[0, max_index]
-                                    self.vfo_freq[i] = freq + self.module_receiver.daq_center_freq
+                                    self.vfo_freq[i] = freq + frame_center_freq
 
                                 decimation_factor = max(
                                     (sampling_freq // self.vfo_bw[i]), 1

@@ -25,7 +25,13 @@ class Case:
     vfo_bw: int = 12500
     vfo_offsets: tuple = (synth.F_OFF,)  # one VFO per offset, relative to the center frequency
     dsp_decimation: int = 1
+    header_center: int = None  # centre frequency in the frame header when it differs from the UI value (a retune)
     extra: dict = field(default_factory=dict)
+
+    @property
+    def rf_center(self):
+        """The frequency the DAQ is really tuned to: the header value."""
+        return self.header_center or self.center
 
     @property
     def true_deg(self):
@@ -36,7 +42,7 @@ class Case:
             self.geometry,
             tuple(self.sources),
             self.seed,
-            self.center,
+            self.rf_center,
             self.radius_m,
             self.spacing_m,
             self.custom_xy_m,
@@ -48,7 +54,7 @@ class Case:
             self.sources,
             self.geometry,
             self.seed,
-            center=self.center,
+            center=self.rf_center,
             spacing_m=self.spacing_m,
             radius_m=self.radius_m,
             custom_xy_m=self.custom_xy_m,

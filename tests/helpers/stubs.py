@@ -101,7 +101,7 @@ class StubReceiver:
         header.active_ant_chs = synth.M
         header.sampling_freq = synth.FS
         header.adc_sampling_freq = synth.FS
-        header.rf_center_freq = case.center
+        header.rf_center_freq = case.rf_center
         header.cpi_length = self.n
         header.cpi_index = index
         header.time_stamp = int(time.time() * 1000)
