@@ -69,10 +69,8 @@ def frequency_cases():
             case = Case(
                 label, "UCA", "MUSIC", [(123, 0, F_OFF)], decorrelation=decorrelation, center=center_mhz * 1_000_000
             )
-            marks = []
-            if decorrelation == "FBA" and center_mhz != 433:
-                marks.append(xfail("P-04: virtual array transform used outside its validity range"))
-            params.append(pytest.param(case, marks=marks, id=label))
+            # FBA at 144, 700 and 1090 MHz failed before M1-05 (P-04); there the plain UCA is used now.
+            params.append(pytest.param(case, id=label))
     return params
 
 

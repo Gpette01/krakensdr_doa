@@ -941,10 +941,25 @@ class SignalProcessor(threading.Thread):
         """
 
         antennas_alignment = self.DOA_ant_alignment
-        if antennas_alignment == "UCA" and (
-            self.DOA_algorithm == "ROOT-MUSIC" or self.DOA_decorrelation_method != "Off"
-        ):
+        algorithm = self.DOA_algorithm
+        decorrelation = self.DOA_decorrelation_method
+        if antennas_alignment == "UCA" and (algorithm == "ROOT-MUSIC" or decorrelation != "Off"):
             antennas_alignment = "VULA"
+            if not virtual_array_supported(self.DOA_UCA_radius_m, vfo_freq, processed_signal.shape[0]):
+                # Outside its range the transform is singular or aliased and the bearing is wrong (finding P-04).
+                # Use the plain UCA grid instead.
+                self.warn_once(
+                    ("virtual array unavailable", algorithm, decorrelation),
+                    "The virtual array needs 1 <= floor(2*pi*radius/wavelength) <= %d (radius %.3f m at %.3f MHz); "
+                    "using the plain UCA with %s and no decorrelation.",
+                    (processed_signal.shape[0] - 1) // 2,
+                    self.DOA_UCA_radius_m,
+                    vfo_freq / 1e6,
+                    "MUSIC" if algorithm == "ROOT-MUSIC" else algorithm,
+                )
+                antennas_alignment = "UCA"
+                algorithm = "MUSIC" if algorithm == "ROOT-MUSIC" else algorithm
+                decorrelation = "Off"
 
         if antennas_alignment == "VULA":
             processed_signal = transform_to_phase_mode_space(processed_signal, self.DOA_UCA_radius_m, vfo_freq)
@@ -955,11 +970,11 @@ class SignalProcessor(threading.Thread):
         R = corr_matrix(processed_signal)
         M = R.shape[0]
 
-        if self.DOA_decorrelation_method == "FBA":
+        if decorrelation == "FBA":
             R = de.forward_backward_avg(R)
-        elif self.DOA_decorrelation_method == "TOEP":
+        elif decorrelation == "TOEP":
             R = toeplitzify(R)
-        elif self.DOA_decorrelation_method == "FBSS":
+        elif decorrelation == "FBSS":
             # VULA must have odd number of elements after spatial averaging
             smoothing_degree = 2 if antennas_alignment == "VULA" else 1
             subarray_size = M - smoothing_degree
@@ -1014,21 +1029,21 @@ class SignalProcessor(threading.Thread):
             scanning_vectors = np.empty((0, 0))
 
         # DOA estimation
-        if self.DOA_algorithm == "Bartlett":  # self.en_DOA_Bartlett:
+        if algorithm == "Bartlett":  # self.en_DOA_Bartlett:
             DOA_Bartlett_res = de.DOA_Bartlett(R, scanning_vectors)
             self.DOA = DOA_Bartlett_res
-        if self.DOA_algorithm == "Capon":  # self.en_DOA_Capon:
+        if algorithm == "Capon":  # self.en_DOA_Capon:
             DOA_Capon_res = de.DOA_Capon(R, scanning_vectors)
             self.DOA = DOA_Capon_res
-        if self.DOA_algorithm == "MEM":  # self.en_DOA_MEM:
+        if algorithm == "MEM":  # self.en_DOA_MEM:
             DOA_MEM_res = de.DOA_MEM(R, scanning_vectors, column_select=0)
             self.DOA = DOA_MEM_res
-        if self.DOA_algorithm == "TNA":
+        if algorithm == "TNA":
             self.DOA = DOA_TNA(R, scanning_vectors)
-        if self.DOA_algorithm == "MUSIC":  # self.en_DOA_MUSIC:
+        if algorithm == "MUSIC":  # self.en_DOA_MUSIC:
             DOA_MUSIC_res = DOA_MUSIC(R, scanning_vectors, signal_dimension=signal_dimension)
             self.DOA = DOA_MUSIC_res
-        if self.DOA_algorithm == "ROOT-MUSIC":
+        if algorithm == "ROOT-MUSIC":
             is_vula = True if antennas_alignment == "VULA" else False
             doas = doa_root_music(R, signal_dimension, is_vula, inter_element_spacing, self.array_offset)
             self.DOA = normalized_gaussian(self.DOA_theta, doas, DEFAULT_ROOT_MUSIC_STD_DEGREES)
@@ -1050,7 +1065,7 @@ class SignalProcessor(threading.Thread):
                 self.DOA[thetas[0:90].astype(int)] = min_val
                 self.DOA[thetas[270:360].astype(int)] = min_val
 
-        if self.DOA_algorithm != "ROOT-MUSIC":
+        if algorithm != "ROOT-MUSIC":
             theta_0 = self.DOA_theta[np.argmax(self.DOA)]
 
         return theta_0
@@ -1523,6 +1538,17 @@ def xi(uca_radius_m: float, frequency_Hz: float) -> Tuple[float, int]:
     x = 2.0 * np.pi * uca_radius_m / wavelength_m
     L = int(np.floor(x))
     return x, L
+
+
+def virtual_array_supported(uca_radius_m: float, frequency_Hz: float, element_count: int) -> bool:
+    """True when the phase mode transform of a UCA is valid: 1 <= L <= (M - 1) // 2 (finding P-04).
+
+    With L = 0 the transform has no mode +-1 and its whitening divides by zero. With L above (M - 1) // 2 the
+    array undersamples the modes: T has more rows than elements, its whitening inverts a singular matrix, and the
+    result follows amplified rounding noise.
+    """
+    _, L = xi(uca_radius_m, frequency_Hz)
+    return 1 <= L <= (element_count - 1) // 2
 
 
 # The phase mode excitation transformation
