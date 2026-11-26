@@ -18,7 +18,6 @@
 #
 # - coding: utf-8 -*-
 
-import copy
 import json
 import logging
 import math
@@ -729,14 +728,6 @@ class SignalProcessor(threading.Thread):
                                 else:
                                     return theta
 
-                            def average_thetas(thetas):
-                                avg_theta = sum(thetas) / len(thetas)
-                                diff_thetas = copy.copy(thetas)
-                                for i in range(len(diff_thetas)):
-                                    diff_thetas[i] = abs(diff_thetas[i] - avg_theta)
-
-                                return avg_theta, max(diff_thetas)
-
                             for (
                                 now_dt_str,
                                 vfo_freq,
@@ -748,14 +739,14 @@ class SignalProcessor(threading.Thread):
                                 store_iq_channel = iq_channel.size > 0
                                 if ((not store_demod_channel) and (not store_iq_channel)) or (not thetas):
                                     continue
-                                avg_theta, max_diff_theta = average_thetas(thetas)
-                                if max_diff_theta > 10:
+                                average = average_bearings(thetas)
+                                if average is None or average[1] > 10:
                                     doa_max_str = []
                                     for theta in thetas:
-                                        doa_max_str.append(f"{adjust_theta(theta):.1f}")
+                                        doa_max_str.append(bearing_text(adjust_theta(theta)))
                                     doa_max_str = "_".join(doa_max_str)
                                 else:
-                                    doa_max_str = f"{adjust_theta(avg_theta):.1f}"
+                                    doa_max_str = bearing_text(adjust_theta(average[0]))
 
                                 if store_demod_channel:
                                     record_file_name = f"{now_dt_str},FM_{vfo_freq / 1e6:.3f}MHz"
@@ -1322,6 +1313,25 @@ def calculate_end_lat_lng(s_lat: float, s_lng: float, doa: float, my_bearing: fl
         math.cos(line_length / R) - math.sin(s_lat_in_rad) * math.sin(e_lat),
     )
     return round(math.degrees(e_lat), 6), round(math.degrees(e_lng), 6)
+
+
+def average_bearings(thetas):
+    """(circular mean in [0, 360), largest distance of a bearing from it), or None when the bearings cancel out.
+
+    A circular mean, because the arithmetic mean of 359 and 1 is 180 (finding P-23).
+    """
+    radians = np.deg2rad(np.asarray(thetas, dtype=np.float64))
+    sum_sin, sum_cos = np.sum(np.sin(radians)), np.sum(np.cos(radians))
+    if np.hypot(sum_sin, sum_cos) / len(thetas) < 1e-6:
+        return None
+    mean = np.rad2deg(np.arctan2(sum_sin, sum_cos)) % 360
+    distances = np.abs((np.asarray(thetas, dtype=np.float64) - mean + 180) % 360 - 180)
+    return float(mean), float(np.max(distances))
+
+
+def bearing_text(theta):
+    """A bearing with one decimal, for the recording file names. Rounded first, then wrapped: 359.96 is 0.0."""
+    return f"{round(theta, 1) % 360:.1f}"
 
 
 def calc_sync(iq_samples):
