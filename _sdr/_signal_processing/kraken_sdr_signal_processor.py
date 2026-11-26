@@ -160,7 +160,8 @@ class SignalProcessor(threading.Thread):
         self.vfo_default_iq = "False"
         self.vfo_iq = ["Default"] * self.max_vfos
         self.vfo_demod_channel = [np.array([])] * self.max_vfos
-        self.vfo_theta_channel = [[]] * self.max_vfos
+        # One list per VFO: [[]] * n would make all VFOs share a single list (finding P-24).
+        self.vfo_theta_channel = [[] for _ in range(self.max_vfos)]
         self.vfo_iq_channel = [np.array([])] * self.max_vfos
         self.vfo_blocked = [False] * self.max_vfos
         self.vfo_time = [0] * self.max_vfos
@@ -173,7 +174,7 @@ class SignalProcessor(threading.Thread):
         self.en_fm_demod = False
         self.vfo_fm_demod = [False] * self.max_vfos
         self.fm_demod_channels = [None] * self.max_vfos
-        self.fm_demod_channels_thetas = [[]] * self.max_vfos
+        self.fm_demod_channels_thetas = [[] for _ in range(self.max_vfos)]
         self.iq_channels = [None] * self.max_vfos
 
         self.active_vfos = 1

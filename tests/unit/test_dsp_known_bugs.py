@@ -81,9 +81,8 @@ def test_custom_array_with_any_coordinate_count_stays_in_bounds(custom_array_bou
     assert custom_array_bounds_probe[coordinate_counts] == [5, 360]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-24")
 def test_each_vfo_has_its_own_theta_list(make_sp):
-    """[[]] * 16 creates one list shared by all VFOs (sp:163, 176)."""
+    """Failed before M1-08 (P-24): [[]] * 16 created one list shared by all VFOs."""
 
     class Receiver:
         daq_center_freq = 416_588_000
