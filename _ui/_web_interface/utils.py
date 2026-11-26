@@ -304,12 +304,19 @@ def settings_change_watcher(web_interface, settings_file_path, last_attempt_fail
                         web_interface.ant_spacing_meters / wavelength
                     )
 
-                web_interface.custom_array_x_meters = np.array(
-                    setting(dsp_settings, "custom_array_x_meters").split(","), dtype=np.float64
-                )
-                web_interface.custom_array_y_meters = np.array(
-                    setting(dsp_settings, "custom_array_y_meters").split(","), dtype=np.float64
-                )
+                # One coordinate per channel, like the UI field; bad text keeps the previous array (follow-up to M1-06).
+                channels = custom_array_element_count(web_interface)
+                custom_x = parse_custom_array(setting(dsp_settings, "custom_array_x_meters"), channels)
+                custom_y = parse_custom_array(setting(dsp_settings, "custom_array_y_meters"), channels)
+                if custom_x is None or custom_y is None:
+                    web_interface.logger.warning(
+                        "Custom array in settings.json: X and Y need %d comma-separated numbers each; "
+                        "keeping the previous coordinates.",
+                        channels,
+                    )
+                else:
+                    web_interface.custom_array_x_meters = custom_x
+                    web_interface.custom_array_y_meters = custom_y
                 web_interface.module_signal_processor.custom_array_x = web_interface.custom_array_x_meters / wavelength
                 web_interface.module_signal_processor.custom_array_y = web_interface.custom_array_y_meters / wavelength
 
@@ -626,6 +633,11 @@ def wavelength_m(frequency_hz):
 def format_custom_array(values):
     """Text for the custom array fields and settings.json, without rounding (it used to round to 1 cm)."""
     return ",".join(str(float(value)) for value in values)
+
+
+def custom_array_element_count(web_interface):
+    """Channel count from the DAQ ini (receiver M), else from the frames; the DSP value is 4 until the first frame."""
+    return web_interface.module_receiver.M or web_interface.module_signal_processor.channel_number
 
 
 def parse_custom_array(text, element_count):

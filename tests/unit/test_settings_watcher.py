@@ -28,10 +28,10 @@ def fake_web_interface():
     return SimpleNamespace(
         module_signal_processor=signal_processor,
         # The receiver holds the center frequency in Hz (kraken_web_interface.py:64-66).
-        module_receiver=SimpleNamespace(daq_center_freq=CENTER_MHZ * 1e6, daq_rx_gain=15.7),
+        module_receiver=SimpleNamespace(daq_center_freq=CENTER_MHZ * 1e6, daq_rx_gain=15.7, M=5),
         daq_center_freq=CENTER_MHZ,  # MHz, as fetch_dsp_data writes it (utils.py:153)
         daq_fs=2.4,
-        logger=SimpleNamespace(error=lambda *args: None),
+        logger=SimpleNamespace(error=lambda *args: None, warning=lambda *args: None),
         config_daq_rf=lambda *args: None,
         save_configuration=lambda: None,
         needs_refresh=False,
@@ -83,3 +83,39 @@ def test_coordinates_are_saved_without_rounding_and_old_files_still_load():
     assert utils.parse_custom_array(text, 5).tolist() == coordinates
     # Files written before M1-07 hold two decimals.
     assert utils.parse_custom_array("0.21,0.06,-0.17,-0.17,0.07", 5).tolist() == [0.21, 0.06, -0.17, -0.17, 0.07]
+
+
+@pytest.mark.parametrize("name", list(__import__("custom_array_cases").CASES))
+def test_watcher_keeps_the_previous_custom_array_on_bad_text(tmp_path, monkeypatch, name):
+    """Follow-up to M1-06: the watcher validates the text like the UI does."""
+    import utils
+    import variables
+    from custom_array_cases import CASES
+
+    x_text, y_text = CASES[name]
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text(
+        json.dumps(
+            {
+                "center_freq": CENTER_MHZ,
+                "uniform_gain": 15.7,
+                "ant_arrangement": "Custom",
+                "custom_array_x_meters": x_text,
+                "custom_array_y_meters": y_text,
+            }
+        )
+    )
+    monkeypatch.setattr(variables, "dsp_settings", {"timestamp": -math.inf})
+    web_interface = fake_web_interface()
+    previous_x, previous_y = np.array([0.3, 0.1, -0.2, -0.2, 0.1]), np.array([0.0, -0.3, -0.1, 0.1, 0.3])
+    web_interface.custom_array_x_meters, web_interface.custom_array_y_meters = previous_x, previous_y
+
+    utils.settings_change_watcher(web_interface, str(settings_file))
+    web_interface.settings_change_timer.cancel()
+
+    if name == "valid":
+        expected = [np.array(x_text.split(","), dtype=float), np.array(y_text.split(","), dtype=float)]
+    else:
+        expected = [previous_x, previous_y]
+    np.testing.assert_array_equal(web_interface.custom_array_x_meters, expected[0])
+    np.testing.assert_array_equal(web_interface.custom_array_y_meters, expected[1])

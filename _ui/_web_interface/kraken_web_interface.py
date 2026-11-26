@@ -12,6 +12,7 @@ from variables import (
     AUTO_GAIN_VALUE,
     DEFAULT_SETTINGS,
     INVALID_SETTINGS_FILE_TIMESTAMP,
+    KRAKENSDR_CHANNELS,
     daq_config_filename,
     setting,
 )
@@ -25,6 +26,7 @@ from kraken_sdr_receiver import ReceiverRTLSDR
 from kraken_sdr_signal_processor import SignalProcessor
 from utils import (
     format_custom_array,
+    parse_custom_array,
     read_config_file_dict,
     settings_change_watcher,
     wavelength_m,
@@ -106,18 +108,6 @@ class WebInterface:
         self.module_signal_processor.DOA_algorithm = setting(dsp_settings, "doa_method")
         self.module_signal_processor.DOA_expected_num_of_sources = setting(dsp_settings, "expected_num_of_sources")
 
-        self.custom_array_x_meters = np.array(
-            setting(dsp_settings, "custom_array_x_meters").split(","), dtype=np.float64
-        )
-        self.custom_array_y_meters = np.array(
-            setting(dsp_settings, "custom_array_y_meters").split(","), dtype=np.float64
-        )
-        self.module_signal_processor.custom_array_x = self.custom_array_x_meters / wavelength_m(
-            self.module_receiver.daq_center_freq
-        )
-        self.module_signal_processor.custom_array_y = self.custom_array_y_meters / wavelength_m(
-            self.module_receiver.daq_center_freq
-        )
         self.module_signal_processor.array_offset = int(setting(dsp_settings, "array_offset"))
 
         self.module_signal_processor.en_DOA_estimation = setting(dsp_settings, "en_doa")
@@ -175,6 +165,27 @@ class WebInterface:
         # The DSP thread starts only with a usable DAQ ini: without one, startup used to raise after the thread had
         # started, and the process hung (finding T-11).
         self.daq_ini_cfg_dict = read_config_file_dict()
+
+        # One coordinate per channel, like the UI field; bad text keeps the defaults (follow-up to M1-06).
+        channels = self.daq_ini_cfg_dict["num_ch"] if self.daq_ini_cfg_dict is not None else KRAKENSDR_CHANNELS
+        custom_x = parse_custom_array(setting(dsp_settings, "custom_array_x_meters"), channels)
+        custom_y = parse_custom_array(setting(dsp_settings, "custom_array_y_meters"), channels)
+        if custom_x is None or custom_y is None:
+            self.logger.warning(
+                "Custom array in settings.json: X and Y need %d comma-separated numbers each; using the defaults.",
+                channels,
+            )
+            custom_x = np.array(DEFAULT_SETTINGS["custom_array_x_meters"].split(","), dtype=np.float64)
+            custom_y = np.array(DEFAULT_SETTINGS["custom_array_y_meters"].split(","), dtype=np.float64)
+        self.custom_array_x_meters = custom_x
+        self.custom_array_y_meters = custom_y
+        self.module_signal_processor.custom_array_x = self.custom_array_x_meters / wavelength_m(
+            self.module_receiver.daq_center_freq
+        )
+        self.module_signal_processor.custom_array_y = self.custom_array_y_meters / wavelength_m(
+            self.module_receiver.daq_center_freq
+        )
+
         if self.daq_ini_cfg_dict is None:
             self.logger.error(
                 "DAQ configuration file %s is missing or unreadable; signal processing is not started. "

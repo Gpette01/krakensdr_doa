@@ -126,6 +126,7 @@ AUTO_GAIN_VALUE = -100.0
 DEFAULT_LOGGING_LEVEL = 3
 
 MAX_VFOS = 16  # SignalProcessor.max_vfos (kraken_sdr_signal_processor.py:151)
+KRAKENSDR_CHANNELS = 5  # used when the DAQ ini gives no channel count
 DEFAULT_CENTER_FREQ_MHZ = 416.588
 
 # The one set of settings.json defaults, used at startup, by the settings watcher and by Reset (finding D-24).

@@ -17,6 +17,7 @@ from kraken_sdr_signal_processor import SignalProcessor, xi
 from kraken_web_config import write_config_file_dict
 from kraken_web_spectrum import init_spectrum_fig
 from utils import (
+    custom_array_element_count,
     fetch_dsp_data,
     fetch_gps_data,
     format_custom_array,
@@ -550,9 +551,7 @@ def update_dsp_params(
 
     # Split CSV input in custom array
 
-    # The channel count from the DAQ ini (kraken_web_interface.py:244) or from the frames; the DSP value is 4 until the
-    # first frame arrives.
-    channels = web_interface.module_receiver.M or web_interface.module_signal_processor.channel_number
+    channels = custom_array_element_count(web_interface)
     custom_x = parse_custom_array(custom_array_x_meters, channels)
     custom_y = parse_custom_array(custom_array_y_meters, channels)
     if custom_x is None or custom_y is None:

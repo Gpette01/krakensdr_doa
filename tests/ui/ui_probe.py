@@ -5,6 +5,7 @@ usage: ui_probe.py <sandbox _ui/_web_interface dir> layout
        ui_probe.py <sandbox _ui/_web_interface dir> logging
        ui_probe.py <sandbox _ui/_web_interface dir> defaults
        ui_probe.py <sandbox _ui/_web_interface dir> startup_state
+       ui_probe.py <sandbox _ui/_web_interface dir> custom_array <cases json>
 """
 
 import json
@@ -113,6 +114,38 @@ def server_facts(app, port):
     app.app.run_server(debug=False, host="127.0.0.1", port=port)
 
 
+def custom_array_by_path(cases_json):
+    """For each case: the custom array that startup and the DSP callback keep (follow-up to M1-06)."""
+    import kraken_web_interface
+    from callbacks.main import update_dsp_params
+    from maindash import web_interface
+
+    callback = update_dsp_params.__wrapped__  # the plain function under the dash_devices wrapper
+    previous = ([0.3, 0.1, -0.2, -0.2, 0.1], [0.0, -0.3, -0.1, 0.1, 0.3])
+    results = {}
+    for name, (x_text, y_text) in json.loads(cases_json).items():
+        kraken_web_interface.dsp_settings = {
+            "timestamp": 0.0,
+            "custom_array_x_meters": x_text,
+            "custom_array_y_meters": y_text,
+        }
+        started = kraken_web_interface.WebInterface()
+        started.settings_change_timer.cancel()
+        web_interface.custom_array_x_meters, web_interface.custom_array_y_meters = map(np_array, previous)
+        callback(None, [1], "Off", 0.21, "Custom", "Linear", "MUSIC", "Both", 1, 0, 0, x_text, y_text, [])
+        results[name] = {
+            "startup": [list(started.custom_array_x_meters), list(started.custom_array_y_meters)],
+            "callback": [list(web_interface.custom_array_x_meters), list(web_interface.custom_array_y_meters)],
+        }
+    return results
+
+
+def np_array(values):
+    import numpy
+
+    return numpy.array(values, dtype=numpy.float64)
+
+
 def default_settings_by_path():
     """settings.json as written after a start with no settings file, after Reset, and after the watcher loaded an
     empty settings file. All three must hold the same defaults (finding D-24)."""
@@ -151,6 +184,9 @@ def main():
             logging.getLogger(name).error("probe error from %s", name)
             logging.getLogger(name).info("probe info from %s", name)
         print(json.dumps({"ok": True}), flush=True)
+        os._exit(0)
+    if mode == "custom_array":
+        print(json.dumps(custom_array_by_path(sys.argv[3])), flush=True)
         os._exit(0)
     if mode == "startup_state":
         from kraken_web_config import generate_config_page_layout
