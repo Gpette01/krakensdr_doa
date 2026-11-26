@@ -27,43 +27,66 @@ RED_COLOR = {"color": "#e74c3c"}
 
 def read_config_file_dict(config_fname=daq_config_filename):
     """The DAQ ini values, or None when the file is missing or cannot be parsed (finding T-11)."""
+    values, _ = load_daq_ini(config_fname)
+    return values
+
+
+def load_daq_ini(config_fname=daq_config_filename):
+    """(values, None), or (None, reason) when the DAQ ini cannot be used. The reason names the cause: the file is
+    missing or unreadable, or the section and option that do not parse."""
+    if not os.path.exists(config_fname):
+        return None, "file not found"
     try:
-        return _read_config_file_dict(config_fname)
-    except (configparser.Error, ValueError):
-        return None
+        with open(config_fname, encoding="utf-8") as file:
+            text = file.read()
+        return _parse_daq_ini(text), None
+    except OSError as error:
+        return None, f"{type(error).__name__}: {error.strerror}"
+    except (configparser.Error, ValueError) as error:
+        return None, f"{type(error).__name__}: {error}"
 
 
-def _read_config_file_dict(config_fname):
+def _parse_daq_ini(text):
     parser = ConfigParser()
-    found = parser.read([config_fname])
+    parser.read_string(text)
     ini_data = {}
-    if not found:
-        return None
+
+    def typed(read, section, option):
+        try:
+            return read(section, option)
+        except ValueError as error:
+            raise ValueError(f"[{section}] {option}: {error}") from error
+
+    def getint(section, option):
+        return typed(parser.getint, section, option)
+
+    def getfloat(section, option):
+        return typed(parser.getfloat, section, option)
 
     ini_data["config_name"] = parser.get("meta", "config_name")
-    ini_data["num_ch"] = parser.getint("hw", "num_ch")
+    ini_data["num_ch"] = getint("hw", "num_ch")
     ini_data["en_bias_tee"] = parser.get("hw", "en_bias_tee")
-    ini_data["daq_buffer_size"] = parser.getint("daq", "daq_buffer_size")
-    ini_data["sample_rate"] = parser.getint("daq", "sample_rate")
-    ini_data["en_noise_source_ctr"] = parser.getint("daq", "en_noise_source_ctr")
-    ini_data["cpi_size"] = parser.getint("pre_processing", "cpi_size")
-    ini_data["decimation_ratio"] = parser.getint("pre_processing", "decimation_ratio")
-    ini_data["fir_relative_bandwidth"] = parser.getfloat("pre_processing", "fir_relative_bandwidth")
-    ini_data["fir_tap_size"] = parser.getint("pre_processing", "fir_tap_size")
+    ini_data["daq_buffer_size"] = getint("daq", "daq_buffer_size")
+    ini_data["sample_rate"] = getint("daq", "sample_rate")
+    ini_data["en_noise_source_ctr"] = getint("daq", "en_noise_source_ctr")
+    ini_data["cpi_size"] = getint("pre_processing", "cpi_size")
+    ini_data["decimation_ratio"] = getint("pre_processing", "decimation_ratio")
+    ini_data["fir_relative_bandwidth"] = getfloat("pre_processing", "fir_relative_bandwidth")
+    ini_data["fir_tap_size"] = getint("pre_processing", "fir_tap_size")
     ini_data["fir_window"] = parser.get("pre_processing", "fir_window")
-    ini_data["en_filter_reset"] = parser.getint("pre_processing", "en_filter_reset")
-    ini_data["corr_size"] = parser.getint("calibration", "corr_size")
-    ini_data["std_ch_ind"] = parser.getint("calibration", "std_ch_ind")
-    ini_data["en_iq_cal"] = parser.getint("calibration", "en_iq_cal")
-    ini_data["gain_lock_interval"] = parser.getint("calibration", "gain_lock_interval")
-    ini_data["require_track_lock_intervention"] = parser.getint("calibration", "require_track_lock_intervention")
-    ini_data["cal_track_mode"] = parser.getint("calibration", "cal_track_mode")
+    ini_data["en_filter_reset"] = getint("pre_processing", "en_filter_reset")
+    ini_data["corr_size"] = getint("calibration", "corr_size")
+    ini_data["std_ch_ind"] = getint("calibration", "std_ch_ind")
+    ini_data["en_iq_cal"] = getint("calibration", "en_iq_cal")
+    ini_data["gain_lock_interval"] = getint("calibration", "gain_lock_interval")
+    ini_data["require_track_lock_intervention"] = getint("calibration", "require_track_lock_intervention")
+    ini_data["cal_track_mode"] = getint("calibration", "cal_track_mode")
     ini_data["amplitude_cal_mode"] = parser.get("calibration", "amplitude_cal_mode")
-    ini_data["cal_frame_interval"] = parser.getint("calibration", "cal_frame_interval")
-    ini_data["cal_frame_burst_size"] = parser.getint("calibration", "cal_frame_burst_size")
-    ini_data["amplitude_tolerance"] = parser.getint("calibration", "amplitude_tolerance")
-    ini_data["phase_tolerance"] = parser.getint("calibration", "phase_tolerance")
-    ini_data["maximum_sync_fails"] = parser.getint("calibration", "maximum_sync_fails")
+    ini_data["cal_frame_interval"] = getint("calibration", "cal_frame_interval")
+    ini_data["cal_frame_burst_size"] = getint("calibration", "cal_frame_burst_size")
+    ini_data["amplitude_tolerance"] = getint("calibration", "amplitude_tolerance")
+    ini_data["phase_tolerance"] = getint("calibration", "phase_tolerance")
+    ini_data["maximum_sync_fails"] = getint("calibration", "maximum_sync_fails")
     ini_data["iq_adjust_source"] = parser.get("calibration", "iq_adjust_source")
     ini_data["iq_adjust_amplitude"] = parser.get("calibration", "iq_adjust_amplitude")
     ini_data["iq_adjust_time_delay_ns"] = parser.get("calibration", "iq_adjust_time_delay_ns")

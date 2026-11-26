@@ -20,7 +20,7 @@ def check_ini(parameters, en_hw_check=0):
 """
 
 
-def build(tmp_path, with_daq_ini=True):
+def build(tmp_path, with_daq_ini=True, daq_ini_text=None):
     root = tmp_path / "krakensdr_doa"
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
     for part in ("_ui", "_sdr"):
@@ -28,7 +28,9 @@ def build(tmp_path, with_daq_ini=True):
     (root / "_share").mkdir()
     firmware = tmp_path / "heimdall_daq_fw" / "Firmware"
     firmware.mkdir(parents=True)
-    if with_daq_ini:
+    if daq_ini_text is not None:
+        (firmware / "daq_chain_config.ini").write_text(daq_ini_text)
+    elif with_daq_ini:
         shutil.copy(TESTS_DIR / "data" / "daq_chain_config.ini", firmware / "daq_chain_config.ini")
     (firmware / "ini_checker.py").write_text(INI_CHECKER_STUB)
     presets = tmp_path / "heimdall_daq_fw" / "config_files" / "test_preset"
@@ -45,9 +47,9 @@ def free_port():
         return probe_socket.getsockname()[1]
 
 
-def run_probe(tmp_path, mode, *args, timeout=120, with_daq_ini=True):
+def run_probe(tmp_path, mode, *args, timeout=120, with_daq_ini=True, daq_ini_text=None):
     """Runs ui_probe.py in the sandbox and returns its last stdout line (JSON) and the full output."""
-    root, work = build(tmp_path, with_daq_ini)
+    root, work = build(tmp_path, with_daq_ini, daq_ini_text)
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     env.setdefault("NUMBA_CACHE_DIR", str(REPO_ROOT / ".numba_cache"))
     completed = subprocess.run(

@@ -26,8 +26,8 @@ from kraken_sdr_receiver import ReceiverRTLSDR
 from kraken_sdr_signal_processor import SignalProcessor
 from utils import (
     format_custom_array,
+    load_daq_ini,
     parse_custom_array,
-    read_config_file_dict,
     settings_change_watcher,
     wavelength_m,
 )
@@ -164,7 +164,7 @@ class WebInterface:
 
         # The DSP thread starts only with a usable DAQ ini: without one, startup used to raise after the thread had
         # started, and the process hung (finding T-11).
-        self.daq_ini_cfg_dict = read_config_file_dict()
+        self.daq_ini_cfg_dict, daq_ini_problem = load_daq_ini()
 
         # One coordinate per channel, like the UI field; bad text keeps the defaults (follow-up to M1-06).
         channels = self.daq_ini_cfg_dict["num_ch"] if self.daq_ini_cfg_dict is not None else KRAKENSDR_CHANNELS
@@ -188,9 +188,10 @@ class WebInterface:
 
         if self.daq_ini_cfg_dict is None:
             self.logger.error(
-                "DAQ configuration file %s is missing or unreadable; signal processing is not started. "
-                "Restore the file and restart the software.",
+                "DAQ configuration file %s cannot be used (%s); signal processing is not started. "
+                "Fix the file and restart the software.",
                 daq_config_filename,
+                daq_ini_problem,
             )
             self.active_daq_ini_cfg = "missing"
         else:
