@@ -1369,7 +1369,11 @@ def reduce_spectrum(spectrum, spectrum_size, channel_number):
     group = len(spectrum[0, :]) // spectrum_size
     for m in nb.prange(spectrum_elements):
         for i in nb.prange(spectrum_size):
-            spectrum_plot_data[m, i] = np.max(spectrum[m, i * group : group * (i + 1)])
+            if m == 0:
+                # Row 0 is the frequency axis: the centre of the group. Its max was the top bin (finding D-47).
+                spectrum_plot_data[m, i] = 0.5 * (spectrum[0, i * group] + spectrum[0, group * (i + 1) - 1])
+            else:
+                spectrum_plot_data[m, i] = np.max(spectrum[m, i * group : group * (i + 1)])
     return spectrum_plot_data
 
 
