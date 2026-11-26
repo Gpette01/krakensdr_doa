@@ -280,7 +280,7 @@ def settings_change_watcher(web_interface, settings_file_path, last_attempt_fail
                 web_interface.module_signal_processor.DOA_ant_alignment = dsp_settings.get("ant_arrangement", "ULA")
                 web_interface.ant_spacing_meters = float(dsp_settings.get("ant_spacing_meters", 0.5))
 
-                wavelength = 300 / web_interface.daq_center_freq
+                wavelength = wavelength_m(web_interface.daq_center_freq * 1e6)
                 if web_interface.module_signal_processor.DOA_ant_alignment == "UCA":
                     web_interface.module_signal_processor.DOA_UCA_radius_m = web_interface.ant_spacing_meters
                     # Convert RADIUS to INTERELEMENT SPACING
@@ -302,12 +302,8 @@ def settings_change_watcher(web_interface, settings_file_path, last_attempt_fail
                 web_interface.custom_array_y_meters = np.float_(
                     dsp_settings.get("custom_array_y_meters", "0.1,0.2,0.3,0.4,0.5").split(",")
                 )
-                web_interface.module_signal_processor.custom_array_x = web_interface.custom_array_x_meters / (
-                    300 / web_interface.module_receiver.daq_center_freq
-                )
-                web_interface.module_signal_processor.custom_array_y = web_interface.custom_array_y_meters / (
-                    300 / web_interface.module_receiver.daq_center_freq
-                )
+                web_interface.module_signal_processor.custom_array_x = web_interface.custom_array_x_meters / wavelength
+                web_interface.module_signal_processor.custom_array_y = web_interface.custom_array_y_meters / wavelength
 
                 # Station Information
                 web_interface.module_signal_processor.station_id = dsp_settings.get("station_id", "NO-CALL")
@@ -390,7 +386,13 @@ def settings_change_watcher(web_interface, settings_file_path, last_attempt_fail
                                 web_interface.module_receiver.daq_center_freq
                             )
 
-                    wavelength = 300 / web_interface.daq_center_freq
+                    wavelength = wavelength_m(web_interface.daq_center_freq * 1e6)
+                    web_interface.module_signal_processor.custom_array_x = (
+                        web_interface.custom_array_x_meters / wavelength
+                    )
+                    web_interface.module_signal_processor.custom_array_y = (
+                        web_interface.custom_array_y_meters / wavelength
+                    )
 
                     if web_interface.module_signal_processor.DOA_ant_alignment == "UCA":
                         # Convert RADIUS to INTERELEMENT SPACING
@@ -608,6 +610,20 @@ def is_float(string, minimum=-inf, maximum=inf):
         return f >= minimum and f <= maximum
     except (ValueError, TypeError):
         return False
+
+
+def wavelength_m(frequency_hz):
+    """Wavelength in metres. 300 m * MHz, the speed-of-light shortcut used everywhere in the UI.
+
+    One helper for the startup path, the callbacks and the settings watcher (finding D-30: the watcher passed Hz
+    where the others passed MHz, so the custom array came out about a million times too large).
+    """
+    return 300e6 / frequency_hz
+
+
+def format_custom_array(values):
+    """Text for the custom array fields and settings.json, without rounding (it used to round to 1 cm)."""
+    return ",".join(str(float(value)) for value in values)
 
 
 def parse_custom_array(text, element_count):

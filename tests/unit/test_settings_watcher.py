@@ -38,8 +38,8 @@ def fake_web_interface():
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="D-30")
 def test_watcher_scales_custom_array_like_the_startup_path(tmp_path, monkeypatch):
+    """Failed before M1-07 (D-30): the watcher divided by 300 / f[Hz] and got values about 1e6 too large."""
     import utils
     import variables
 
@@ -67,3 +67,19 @@ def test_watcher_scales_custom_array_like_the_startup_path(tmp_path, monkeypatch
     np.testing.assert_allclose(
         web_interface.module_signal_processor.custom_array_y, np.array(CUSTOM_Y_M) / wavelength_m
     )
+
+
+def test_wavelength_helper_takes_hertz():
+    import utils
+
+    assert utils.wavelength_m(416.588e6) == pytest.approx(300 / 416.588)
+
+
+def test_coordinates_are_saved_without_rounding_and_old_files_still_load():
+    import utils
+
+    coordinates = [0.2137, 0.0661, -0.1729, -0.1729, 0.0661]
+    text = utils.format_custom_array(coordinates)
+    assert utils.parse_custom_array(text, 5).tolist() == coordinates
+    # Files written before M1-07 hold two decimals.
+    assert utils.parse_custom_array("0.21,0.06,-0.17,-0.17,0.07", 5).tolist() == [0.21, 0.06, -0.17, -0.17, 0.07]

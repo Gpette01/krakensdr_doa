@@ -1,7 +1,7 @@
 import numpy as np
 from dash_devices.dependencies import Input, Output, State
 from maindash import app, web_interface
-from utils import get_agc_warning_style_from_gain
+from utils import get_agc_warning_style_from_gain, wavelength_m
 
 
 @app.callback_shared(
@@ -30,7 +30,7 @@ def update_daq_params(input_value, f0, gain):
             ):
                 web_interface.module_signal_processor.vfo_freq[i] = f0 * 10**6
 
-        wavelength = 300 / f0
+        wavelength = wavelength_m(f0 * 1e6)
 
         if web_interface.module_signal_processor.DOA_ant_alignment == "UCA":
             # Convert RADIUS to INTERELEMENT SPACING

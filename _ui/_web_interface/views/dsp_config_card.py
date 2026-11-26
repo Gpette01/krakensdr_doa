@@ -6,6 +6,7 @@ from maindash import web_interface
 
 # isort: on
 
+from utils import format_custom_array
 from variables import DECORRELATION_OPTIONS, DOA_METHODS, option
 
 
@@ -42,7 +43,7 @@ def get_dsp_config_card_layout():
                     html.Div("Custom X [m]:", className="field-label"),
                     dcc.Input(
                         id="custom_array_x_meters",
-                        value=",".join(["%.2f" % num for num in web_interface.custom_array_x_meters]),
+                        value=format_custom_array(web_interface.custom_array_x_meters),
                         type="text",
                         debounce=True,
                         className="field-body-textbox",
@@ -56,7 +57,7 @@ def get_dsp_config_card_layout():
                     html.Div("Custom Y [m]:", className="field-label"),
                     dcc.Input(
                         id="custom_array_y_meters",
-                        value=",".join(["%.2f" % num for num in web_interface.custom_array_y_meters]),
+                        value=format_custom_array(web_interface.custom_array_y_meters),
                         type="text",
                         debounce=True,
                         className="field-body-textbox",

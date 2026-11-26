@@ -447,7 +447,8 @@ def test_settings_json_written_by_save_configuration(tmp_path, monkeypatch, make
     assert list(data) == SETTINGS_KEYS + vfo_keys + ["ext_upd_flag"]
     assert data["center_freq"] == 433.92  # MHz, from the receiver value in Hz
     assert data["uniform_gain"] == "Auto"  # -100 means automatic gain
-    assert data["custom_array_x_meters"] == "0.21,0.06,-0.17,-0.17,0.07"  # rounded to 1 cm (D-30)
+    # Comma-separated metres; written unrounded since M1-07 (it was rounded to 1 cm, "0.21,...").
+    assert data["custom_array_x_meters"] == "0.214,0.06,-0.17,-0.17,0.07"
     assert (data["en_system_control"], data["en_beta_features"]) == (True, False)
     assert data["vfo_freq_0"] == sp.vfo_freq[0] == 433_920_000  # Hz
     assert data["ext_upd_flag"] is False

@@ -22,7 +22,12 @@ from kraken_sdr_receiver import ReceiverRTLSDR
 
 # Import built-in modules
 from kraken_sdr_signal_processor import SignalProcessor
-from utils import read_config_file_dict, settings_change_watcher
+from utils import (
+    format_custom_array,
+    read_config_file_dict,
+    settings_change_watcher,
+    wavelength_m,
+)
 
 
 class WebInterface:
@@ -90,13 +95,13 @@ class WebInterface:
                 * self.ant_spacing_meters
                 * np.sqrt(1 - np.cos(np.deg2rad(360 / self.module_signal_processor.channel_number)))
             )
-            self.module_signal_processor.DOA_inter_elem_space = inter_elem_spacing / (
-                300 / float(dsp_settings.get("center_freq", 100.0))
+            self.module_signal_processor.DOA_inter_elem_space = inter_elem_spacing / wavelength_m(
+                self.module_receiver.daq_center_freq
             )
         else:
             self.module_signal_processor.DOA_UCA_radius_m = np.Infinity
-            self.module_signal_processor.DOA_inter_elem_space = self.ant_spacing_meters / (
-                300 / float(dsp_settings.get("center_freq", 100.0))
+            self.module_signal_processor.DOA_inter_elem_space = self.ant_spacing_meters / wavelength_m(
+                self.module_receiver.daq_center_freq
             )
 
         self.module_signal_processor.ula_direction = dsp_settings.get("ula_direction", "Both")
@@ -109,11 +114,11 @@ class WebInterface:
         self.custom_array_y_meters = np.float_(
             dsp_settings.get("custom_array_y_meters", "0.00,-0.20,-0.12,0.12,0.20").split(",")
         )
-        self.module_signal_processor.custom_array_x = self.custom_array_x_meters / (
-            300 / float(dsp_settings.get("center_freq", 100.0))
+        self.module_signal_processor.custom_array_x = self.custom_array_x_meters / wavelength_m(
+            self.module_receiver.daq_center_freq
         )
-        self.module_signal_processor.custom_array_y = self.custom_array_y_meters / (
-            300 / float(dsp_settings.get("center_freq", 100.0))
+        self.module_signal_processor.custom_array_y = self.custom_array_y_meters / wavelength_m(
+            self.module_receiver.daq_center_freq
         )
         self.module_signal_processor.array_offset = int(dsp_settings.get("array_offset", 0))
 
@@ -291,8 +296,8 @@ class WebInterface:
         data["ula_direction"] = self.module_signal_processor.ula_direction
         # self.module_signal_processor.DOA_inter_elem_space
         data["ant_spacing_meters"] = self.ant_spacing_meters
-        data["custom_array_x_meters"] = ",".join(["%.2f" % num for num in self.custom_array_x_meters])
-        data["custom_array_y_meters"] = ",".join(["%.2f" % num for num in self.custom_array_y_meters])
+        data["custom_array_x_meters"] = format_custom_array(self.custom_array_x_meters)
+        data["custom_array_y_meters"] = format_custom_array(self.custom_array_y_meters)
         data["array_offset"] = int(self.module_signal_processor.array_offset)
 
         data["doa_method"] = self.module_signal_processor.DOA_algorithm

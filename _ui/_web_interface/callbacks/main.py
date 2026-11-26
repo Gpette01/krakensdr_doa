@@ -19,12 +19,14 @@ from kraken_web_spectrum import init_spectrum_fig
 from utils import (
     fetch_dsp_data,
     fetch_gps_data,
+    format_custom_array,
     is_float,
     is_int,
     parse_custom_array,
     read_config_file_dict,
     set_clicked,
     settings_change_watcher,
+    wavelength_m,
 )
 from variables import (
     DECORRELATION_OPTIONS,
@@ -525,7 +527,7 @@ def update_dsp_params(
 ):  # , input_value):
     if is_float(spacing_meter, minimum=0.0):
         web_interface.ant_spacing_meters = spacing_meter
-    wavelength = 300 / web_interface.daq_center_freq
+    wavelength = wavelength_m(web_interface.daq_center_freq * 1e6)
 
     # web_interface.module_signal_processor.DOA_inter_elem_space = web_interface.ant_spacing_meters / wavelength
 
@@ -971,12 +973,8 @@ def settings_change_refresh(toggle_value, pathname):
                 "en_doa_check": {"value": [1] if web_interface.module_signal_processor.en_DOA_estimation else []},
                 "doa_decorrelation_method": {"value": web_interface.module_signal_processor.DOA_decorrelation_method},
                 "radio_ant_arrangement": {"value": web_interface.module_signal_processor.DOA_ant_alignment},
-                "custom_array_x_meters": {
-                    "value": ",".join(["%.2f" % num for num in web_interface.custom_array_x_meters])
-                },
-                "custom_array_y_meters": {
-                    "value": ",".join(["%.2f" % num for num in web_interface.custom_array_y_meters])
-                },
+                "custom_array_x_meters": {"value": format_custom_array(web_interface.custom_array_x_meters)},
+                "custom_array_y_meters": {"value": format_custom_array(web_interface.custom_array_y_meters)},
                 "station_id_input": {"value": web_interface.module_signal_processor.station_id},
                 "loc_src_dropdown": {"value": web_interface.location_source},
                 "latitude_input": {"value": web_interface.module_signal_processor.latitude},
