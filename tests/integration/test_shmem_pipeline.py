@@ -16,15 +16,9 @@ TRUE_DEG = 123.0
 TIMEOUT_S = 150
 
 
-def run_pipeline(workdir):
-    control = workdir / "_data_control"
-    control.mkdir()
-    for name in ("fw_delay_sync_iq", "bw_delay_sync_iq"):
-        os.mkfifo(control / name)
-    port_file = workdir / "control_port"
-    control_log = workdir / "control_log.json"
-    out_json = workdir / "consumer.json"
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+def start_daq(workdir, run, n_frames, true_deg, env):
+    """Starts one fake DAQ life and waits until it has published its control port."""
+    port_file = workdir / f"control_port_{run}"
     daq = subprocess.Popen(
         [
             sys.executable,
@@ -32,10 +26,10 @@ def run_pipeline(workdir):
             "ignore",
             str(HERE / "fake_daq.py"),
             str(port_file),
-            str(control_log),
+            str(workdir / f"control_log_{run}.json"),
             str(N_SAMPLES),
-            str(N_FRAMES),
-            str(TRUE_DEG),
+            str(n_frames),
+            str(true_deg),
         ],
         cwd=workdir,
         env=env,
@@ -43,15 +37,32 @@ def run_pipeline(workdir):
         stderr=subprocess.STDOUT,
         text=True,
     )
+    deadline = time.time() + 30
+    while not port_file.exists():
+        if daq.poll() is not None:
+            raise RuntimeError(f"fake DAQ exited early: {daq.stdout.read()}")
+        if time.time() > deadline:
+            daq.kill()
+            raise RuntimeError("fake DAQ never published its control port")
+        time.sleep(0.05)
+    return daq, port_file.read_text()
+
+
+def run_pipeline(workdir, daq_runs=((N_FRAMES, TRUE_DEG),)):
+    """One consumer; the fake DAQ runs once per (frames, bearing) entry, one after the other on the same FIFOs."""
+    control = workdir / "_data_control"
+    control.mkdir()
+    for name in ("fw_delay_sync_iq", "bw_delay_sync_iq"):
+        os.mkfifo(control / name)
+    out_json = workdir / "consumer.json"
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    processes = []
     consumer = None
+    daq_outputs = []
     try:
-        deadline = time.time() + 30
-        while not port_file.exists():
-            if daq.poll() is not None:
-                raise RuntimeError(f"fake DAQ exited early: {daq.stdout.read()}")
-            if time.time() > deadline:
-                raise RuntimeError("fake DAQ never published its control port")
-            time.sleep(0.05)
+        daq, port = start_daq(workdir, 0, *daq_runs[0], env)
+        processes.append(daq)
+        total_frames = sum(n_frames for n_frames, _ in daq_runs)
         consumer = subprocess.Popen(
             [
                 sys.executable,
@@ -59,8 +70,8 @@ def run_pipeline(workdir):
                 "ignore",
                 str(HERE / "consumer.py"),
                 str(workdir),
-                port_file.read_text(),
-                str(N_FRAMES),
+                port,
+                str(total_frames),
                 str(out_json),
             ],
             cwd=workdir,
@@ -69,11 +80,17 @@ def run_pipeline(workdir):
             stderr=subprocess.STDOUT,
             text=True,
         )
+        processes.append(consumer)
+        for run, (n_frames, true_deg) in enumerate(daq_runs[1:], start=1):
+            daq_outputs.append(daq.communicate(timeout=60)[0])
+            daq, _ = start_daq(workdir, run, n_frames, true_deg, env)
+            processes.append(daq)
         consumer_output, _ = consumer.communicate(timeout=TIMEOUT_S)
-        daq_output, _ = daq.communicate(timeout=30)
+        daq_outputs.append(daq.communicate(timeout=30)[0])
+        daq_output = "\n".join(daq_outputs)
     finally:
-        for process in (daq, consumer):
-            if process is not None and process.poll() is None:
+        for process in processes:
+            if process.poll() is None:
                 process.kill()
                 process.wait(timeout=10)
         for name in SHM_NAMES:
@@ -83,6 +100,7 @@ def run_pipeline(workdir):
         # Not an AssertionError, so that a broken pipeline can never count as an expected failure.
         raise RuntimeError(f"consumer wrote no summary.\nconsumer: {consumer_output}\nfake DAQ: {daq_output}")
     summary = json.loads(out_json.read_text())
+    control_log = workdir / "control_log_0.json"
     summary["control"] = json.loads(control_log.read_text()) if control_log.exists() else []
     summary["daq_output"] = daq_output
     return summary
@@ -126,3 +144,24 @@ def test_a_closed_fifo_is_not_an_error(pipeline):
 )
 def test_each_packet_carries_its_own_frame_index(pipeline):
     assert [frame["cpi_index"] for frame in pipeline["frames"]] == list(range(N_FRAMES))
+
+
+RESTART_FRAMES = 4
+SECOND_DAQ_DEG = 240.0
+
+
+@pytest.fixture(scope="module")
+def restarted_pipeline(tmp_path_factory):
+    """DAQ A sends 4 frames at 123 degrees and exits; DAQ B then starts on the same FIFOs with 240 degrees."""
+    if any(Path("/dev/shm", name).exists() for name in SHM_NAMES):
+        pytest.skip("a DAQ shared memory segment already exists; a real DAQ may be running")
+    return run_pipeline(
+        tmp_path_factory.mktemp("shmem_restart"), ((RESTART_FRAMES, TRUE_DEG), (RESTART_FRAMES, SECOND_DAQ_DEG))
+    )
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="N-01 / M3-05: no re-init after the DAQ restarts")
+def test_frames_after_a_daq_restart_come_from_the_new_daq(restarted_pipeline):
+    """DAQ B recreates the shared memory; the receiver still maps A's unlinked segments and reads stale frames."""
+    bearings = [frame["doa_max"] for frame in restarted_pipeline["frames"]]
+    assert bearings[-RESTART_FRAMES:] == [SECOND_DAQ_DEG] * RESTART_FRAMES, restarted_pipeline["frames"]
