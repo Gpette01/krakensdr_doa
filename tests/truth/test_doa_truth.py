@@ -123,6 +123,57 @@ def overestimated_source_cases():
     return params
 
 
+# (center MHz, estimator, decorrelation, expected sources) where the virtual array misses a 211 degree source by
+# more than 0.5 degrees today (measured in both environments; N-03, fixed by M5-06).
+VIRTUAL_ARRAY_MISSES = {
+    (433, "Capon", "FBA", 1),
+    (433, "Capon", "TOEP", 1),
+    (433, "MEM", "FBA", 1),
+    (433, "TNA", "FBA", 1),
+    (433, "TNA", "FBSS", 1),
+    (433, "MUSIC", "FBA", 2),
+    (650, "Bartlett", "FBA", 1),
+    (650, "Bartlett", "TOEP", 1),
+    (650, "Capon", "FBA", 1),
+    (650, "Capon", "TOEP", 1),
+    (650, "Capon", "FBSS", 1),
+    (650, "MEM", "FBA", 1),
+    (650, "MEM", "TOEP", 1),
+    (650, "TNA", "FBA", 1),
+    (650, "TNA", "TOEP", 1),
+    (650, "TNA", "FBSS", 1),
+    (650, "MUSIC", "FBA", 1),
+    (650, "MUSIC", "TOEP", 1),
+}
+
+
+def virtual_array_cases():
+    """UCA with decorrelation (the virtual array, in its valid range at r = 0.21 m) for each grid estimator."""
+    params = []
+    settings = [
+        (center, algorithm, decorrelation, 1)
+        for center in (433, 650)
+        for algorithm in ("Bartlett", "Capon", "MEM", "TNA", "MUSIC")
+        for decorrelation in ("FBA", "TOEP", "FBSS")
+    ] + [(433, "MUSIC", "FBA", 2)]
+    for center, algorithm, decorrelation, expected_sources in settings:
+        label = f"{center}MHz/UCA/{algorithm}/{decorrelation}/sources={expected_sources}/211deg"
+        case = Case(
+            label,
+            "UCA",
+            algorithm,
+            [(211, 0, F_OFF)],
+            decorrelation=decorrelation,
+            expected_sources=expected_sources,
+            center=center * 1_000_000,
+        )
+        marks = []
+        if (center, algorithm, decorrelation, expected_sources) in VIRTUAL_ARRAY_MISSES:
+            marks.append(xfail("N-03 / M5-06: virtual array mode magnitudes not compensated"))
+        params.append(pytest.param(case, marks=marks, id=label))
+    return params
+
+
 ULA_ROOT_MUSIC_ANGLES = (20, 70, 110, 160, 200, 250, 300, 340)
 
 
@@ -158,6 +209,7 @@ GROUPS = {
     "smoothing_limit": smoothing_limit_cases(),
     "custom": custom_cases(),
     "overestimated": overestimated_source_cases(),
+    "virtual_array": virtual_array_cases(),
 }
 ALL_CASES = [param.values[0] for params in GROUPS.values() for param in params]
 ALL_CASES += [case for param in ula_root_music_cases() for case in param.values[0]]
@@ -187,7 +239,9 @@ def assert_true_bearing(result, ula_mirror_allowed):
     assert error <= tolerance, f"expected {expected} (ULA mirror allowed: {ula_mirror_allowed}). {result.describe()}"
 
 
-@pytest.mark.parametrize("case", GROUPS["grid"] + GROUPS["custom"] + GROUPS["frequency"] + GROUPS["smoothing"])
+@pytest.mark.parametrize(
+    "case", GROUPS["grid"] + GROUPS["custom"] + GROUPS["frequency"] + GROUPS["smoothing"] + GROUPS["virtual_array"]
+)
 def test_bearing_matches_truth(results, case):
     assert_true_bearing(results[case.label], ula_mirror_allowed=case.geometry == "ULA")
 
