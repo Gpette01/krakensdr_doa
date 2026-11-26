@@ -9,10 +9,10 @@ import numpy as np
 from variables import (
     settings_file_path,
     dsp_settings,
-    DEFAULT_MAPPING_SERVER_ENDPOINT,
     AUTO_GAIN_VALUE,
-    DEFAULT_LOGGING_LEVEL,
+    DEFAULT_SETTINGS,
     INVALID_SETTINGS_FILE_TIMESTAMP,
+    setting,
 )
 
 # isort: on
@@ -34,7 +34,7 @@ class WebInterface:
     def __init__(self):
         self.user_interface = None
 
-        self.logging_level = dsp_settings.get("logging_level", DEFAULT_LOGGING_LEVEL) * 10
+        self.logging_level = setting(dsp_settings, "logging_level") * 10
         logging.basicConfig(level=self.logging_level)
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(self.logging_level)
@@ -48,44 +48,41 @@ class WebInterface:
         #############################################
 
         # Web interface internal
-        self.disable_tooltips = dsp_settings.get("disable_tooltips", 0)
+        self.disable_tooltips = setting(dsp_settings, "disable_tooltips")
         self.page_update_rate = 1
         self._avg_win_size = 10
         self._update_rate_arr = None
 
-        self._doa_fig_type = dsp_settings.get("doa_fig_type", "Linear")
+        self._doa_fig_type = setting(dsp_settings, "doa_fig_type")
 
         # Que to communicate with the signal processing module
         self.sp_data_que = queue.Queue(1)
         # Que to communicate with the receiver modules
         self.rx_data_que = queue.Queue(1)
 
-        self.data_interface = dsp_settings.get("data_interface", "shmem")
+        self.data_interface = setting(dsp_settings, "data_interface")
 
-        default_center_frequency_mhz = 416.588
         # Instantiate and configure Kraken SDR modules
         self.module_receiver = ReceiverRTLSDR(
             data_que=self.rx_data_que, data_interface=self.data_interface, logging_level=self.logging_level
         )
-        self.module_receiver.daq_center_freq = (
-            float(dsp_settings.get("center_freq", default_center_frequency_mhz)) * 10**6
-        )
+        self.module_receiver.daq_center_freq = float(setting(dsp_settings, "center_freq")) * 10**6
         self.module_receiver.daq_rx_gain = (
-            float(dsp_settings.get("uniform_gain", 15.7))
-            if dsp_settings.get("uniform_gain", 15.7) != "Auto"
+            float(setting(dsp_settings, "uniform_gain"))
+            if setting(dsp_settings, "uniform_gain") != "Auto"
             else AUTO_GAIN_VALUE
         )
-        self.module_receiver.rec_ip_addr = dsp_settings.get("default_ip", "0.0.0.0")
+        self.module_receiver.rec_ip_addr = setting(dsp_settings, "default_ip")
 
         # Remote Control
-        self.remote_control = dsp_settings.get("en_remote_control", False)
+        self.remote_control = setting(dsp_settings, "en_remote_control")
 
         self.module_signal_processor = SignalProcessor(
             data_que=self.sp_data_que, module_receiver=self.module_receiver, logging_level=self.logging_level
         )
-        self.module_signal_processor.DOA_ant_alignment = dsp_settings.get("ant_arrangement", "UCA")
+        self.module_signal_processor.DOA_ant_alignment = setting(dsp_settings, "ant_arrangement")
         self.module_signal_processor.doa_measure = self._doa_fig_type
-        self.ant_spacing_meters = float(dsp_settings.get("ant_spacing_meters", 0.21))
+        self.ant_spacing_meters = float(setting(dsp_settings, "ant_spacing_meters"))
 
         if self.module_signal_processor.DOA_ant_alignment == "UCA":
             self.module_signal_processor.DOA_UCA_radius_m = self.ant_spacing_meters
@@ -104,15 +101,15 @@ class WebInterface:
                 self.module_receiver.daq_center_freq
             )
 
-        self.module_signal_processor.ula_direction = dsp_settings.get("ula_direction", "Both")
-        self.module_signal_processor.DOA_algorithm = dsp_settings.get("doa_method", "MUSIC")
-        self.module_signal_processor.DOA_expected_num_of_sources = dsp_settings.get("expected_num_of_sources", 1)
+        self.module_signal_processor.ula_direction = setting(dsp_settings, "ula_direction")
+        self.module_signal_processor.DOA_algorithm = setting(dsp_settings, "doa_method")
+        self.module_signal_processor.DOA_expected_num_of_sources = setting(dsp_settings, "expected_num_of_sources")
 
         self.custom_array_x_meters = np.array(
-            dsp_settings.get("custom_array_x_meters", "0.21,0.06,-0.17,-0.17,0.07").split(","), dtype=np.float64
+            setting(dsp_settings, "custom_array_x_meters").split(","), dtype=np.float64
         )
         self.custom_array_y_meters = np.array(
-            dsp_settings.get("custom_array_y_meters", "0.00,-0.20,-0.12,0.12,0.20").split(","), dtype=np.float64
+            setting(dsp_settings, "custom_array_y_meters").split(","), dtype=np.float64
         )
         self.module_signal_processor.custom_array_x = self.custom_array_x_meters / wavelength_m(
             self.module_receiver.daq_center_freq
@@ -120,61 +117,59 @@ class WebInterface:
         self.module_signal_processor.custom_array_y = self.custom_array_y_meters / wavelength_m(
             self.module_receiver.daq_center_freq
         )
-        self.module_signal_processor.array_offset = int(dsp_settings.get("array_offset", 0))
+        self.module_signal_processor.array_offset = int(setting(dsp_settings, "array_offset"))
 
-        self.module_signal_processor.en_DOA_estimation = dsp_settings.get("en_doa", True)
-        self.module_signal_processor.DOA_decorrelation_method = dsp_settings.get("doa_decorrelation_method", "Off")
+        self.module_signal_processor.en_DOA_estimation = setting(dsp_settings, "en_doa")
+        self.module_signal_processor.DOA_decorrelation_method = setting(dsp_settings, "doa_decorrelation_method")
 
         # Output Data format.
-        self.module_signal_processor.DOA_data_format = dsp_settings.get("doa_data_format", "Kraken App")
+        self.module_signal_processor.DOA_data_format = setting(dsp_settings, "doa_data_format")
 
         # Station Information
-        self.module_signal_processor.station_id = dsp_settings.get("station_id", "NOCALL")
-        self.location_source = dsp_settings.get("location_source", "None")
-        self.module_signal_processor.latitude = dsp_settings.get("latitude", 0.0)
-        self.module_signal_processor.longitude = dsp_settings.get("longitude", 0.0)
-        self.module_signal_processor.heading = dsp_settings.get("heading", 0.0)
-        self.module_signal_processor.fixed_heading = dsp_settings.get("gps_fixed_heading", False)
-        self.module_signal_processor.gps_min_speed_for_valid_heading = dsp_settings.get("gps_min_speed", 2)
-        self.module_signal_processor.gps_min_duration_for_valid_heading = dsp_settings.get("gps_min_speed_duration", 3)
+        self.module_signal_processor.station_id = setting(dsp_settings, "station_id")
+        self.location_source = setting(dsp_settings, "location_source")
+        self.module_signal_processor.latitude = setting(dsp_settings, "latitude")
+        self.module_signal_processor.longitude = setting(dsp_settings, "longitude")
+        self.module_signal_processor.heading = setting(dsp_settings, "heading")
+        self.module_signal_processor.fixed_heading = setting(dsp_settings, "gps_fixed_heading")
+        self.module_signal_processor.gps_min_speed_for_valid_heading = setting(dsp_settings, "gps_min_speed")
+        self.module_signal_processor.gps_min_duration_for_valid_heading = setting(
+            dsp_settings, "gps_min_speed_duration"
+        )
 
         # Kraken Pro Remote Key
-        self.module_signal_processor.krakenpro_key = dsp_settings.get("krakenpro_key", "0ae4ca6b3")
+        self.module_signal_processor.krakenpro_key = setting(dsp_settings, "krakenpro_key")
 
         # Mapping Server URL
-        self.mapping_server_url = dsp_settings.get("mapping_server_url", DEFAULT_MAPPING_SERVER_ENDPOINT)
+        self.mapping_server_url = setting(dsp_settings, "mapping_server_url")
 
         # VFO Configuration
-        self.module_signal_processor.spectrum_fig_type = dsp_settings.get("spectrum_calculation", "Single")
-        self.module_signal_processor.vfo_mode = dsp_settings.get("vfo_mode", "Standard")
-        self.module_signal_processor.vfo_default_squelch_mode = dsp_settings.get("vfo_default_squelch_mode", "Auto")
-        self.module_signal_processor.vfo_default_demod = dsp_settings.get("vfo_default_demod", "None")
-        self.module_signal_processor.vfo_default_iq = dsp_settings.get("vfo_default_iq", "False")
-        self.module_signal_processor.max_demod_timeout = int(dsp_settings.get("max_demod_timeout", 60))
-        self.module_signal_processor.dsp_decimation = int(dsp_settings.get("dsp_decimation", 1))
-        self.module_signal_processor.active_vfos = int(dsp_settings.get("active_vfos", 1))
-        self.module_signal_processor.output_vfo = int(dsp_settings.get("output_vfo", 0))
-        self.module_signal_processor.optimize_short_bursts = dsp_settings.get("en_optimize_short_bursts", False)
-        self.module_signal_processor.en_peak_hold = dsp_settings.get("en_peak_hold", False)
+        self.module_signal_processor.spectrum_fig_type = setting(dsp_settings, "spectrum_calculation")
+        self.module_signal_processor.vfo_mode = setting(dsp_settings, "vfo_mode")
+        self.module_signal_processor.vfo_default_squelch_mode = setting(dsp_settings, "vfo_default_squelch_mode")
+        self.module_signal_processor.vfo_default_demod = setting(dsp_settings, "vfo_default_demod")
+        self.module_signal_processor.vfo_default_iq = setting(dsp_settings, "vfo_default_iq")
+        self.module_signal_processor.max_demod_timeout = int(setting(dsp_settings, "max_demod_timeout"))
+        self.module_signal_processor.dsp_decimation = int(setting(dsp_settings, "dsp_decimation"))
+        self.module_signal_processor.active_vfos = int(setting(dsp_settings, "active_vfos"))
+        self.module_signal_processor.output_vfo = int(setting(dsp_settings, "output_vfo"))
+        self.module_signal_processor.optimize_short_bursts = setting(dsp_settings, "en_optimize_short_bursts")
+        self.module_signal_processor.en_peak_hold = setting(dsp_settings, "en_peak_hold")
         self.selected_vfo = 0
-        self.module_signal_processor.vfo_default_squelch_mode = dsp_settings.get("vfo_default_squelch_mode", "Auto")
+        self.module_signal_processor.vfo_default_squelch_mode = setting(dsp_settings, "vfo_default_squelch_mode")
 
         for i in range(self.module_signal_processor.max_vfos):
-            self.module_signal_processor.vfo_bw[i] = int(
-                dsp_settings.get("vfo_bw_" + str(i), self.module_signal_processor.vfo_bw[i])
-            )
+            self.module_signal_processor.vfo_bw[i] = int(setting(dsp_settings, "vfo_bw_" + str(i)))
             self.module_signal_processor.vfo_fir_order_factor[i] = int(
-                dsp_settings.get("vfo_fir_order_factor_" + str(i), self.module_signal_processor.vfo_fir_order_factor[i])
+                setting(dsp_settings, "vfo_fir_order_factor_" + str(i))
             )
             self.module_signal_processor.vfo_freq[i] = float(
                 dsp_settings.get("vfo_freq_" + str(i), self.module_receiver.daq_center_freq)
             )
-            self.module_signal_processor.vfo_squelch_mode[i] = dsp_settings.get("vfo_squelch_mode_" + str(i), "Default")
-            self.module_signal_processor.vfo_squelch[i] = int(
-                dsp_settings.get("vfo_squelch_" + str(i), self.module_signal_processor.vfo_squelch[i])
-            )
-            self.module_signal_processor.vfo_demod[i] = dsp_settings.get("vfo_demod_" + str(i), "Default")
-            self.module_signal_processor.vfo_iq[i] = dsp_settings.get("vfo_iq_" + str(i), "Default")
+            self.module_signal_processor.vfo_squelch_mode[i] = setting(dsp_settings, "vfo_squelch_mode_" + str(i))
+            self.module_signal_processor.vfo_squelch[i] = int(setting(dsp_settings, "vfo_squelch_" + str(i)))
+            self.module_signal_processor.vfo_demod[i] = setting(dsp_settings, "vfo_demod_" + str(i))
+            self.module_signal_processor.vfo_iq[i] = setting(dsp_settings, "vfo_iq_" + str(i))
 
         self.module_signal_processor.start()
 
@@ -194,15 +189,15 @@ class WebInterface:
         self.daq_sample_delay_sync = 0
         self.daq_iq_sync = 0
         self.daq_noise_source_state = 0
-        self.daq_center_freq = float(dsp_settings.get("center_freq", 100.0))
+        self.daq_center_freq = float(setting(dsp_settings, "center_freq"))
         self.daq_adc_fs = 0  # "-"
         self.daq_fs = 0  # "-"
         self.daq_cpi = 0  # "-"
         self.daq_if_gains = "[,,,,]"
         self.en_advanced_daq_cfg = False
         self.en_basic_daq_cfg = False
-        self.en_system_control = [1] if dsp_settings.get("en_system_control", False) else []
-        self.en_beta_features = [1] if dsp_settings.get("en_beta_features", False) else []
+        self.en_system_control = [1] if setting(dsp_settings, "en_system_control") else []
+        self.en_beta_features = [1] if setting(dsp_settings, "en_beta_features") else []
 
         self.daq_ini_cfg_dict = read_config_file_dict()
         # "Default" # Holds the string identifier of the actively loaded DAQ ini configuration
@@ -218,7 +213,7 @@ class WebInterface:
         self.doas = []  # Final measured DoAs [deg]
         self.max_doas_list = []
         self.doa_confidences = []
-        self.compass_offset = dsp_settings.get("compass_offset", 0)
+        self.compass_offset = setting(dsp_settings, "compass_offset")
         self.module_signal_processor.compass_offset = self.compass_offset
         self.daq_dsp_latency = 0  # [ms]
         self.max_amplitude = 0  # Used to help setting the threshold level of the squelch
@@ -284,8 +279,8 @@ class WebInterface:
         data["uniform_gain"] = (
             self.module_receiver.daq_rx_gain if self.module_receiver.daq_rx_gain != AUTO_GAIN_VALUE else "Auto"
         )
-        data["data_interface"] = dsp_settings.get("data_interface", "shmem")
-        data["default_ip"] = dsp_settings.get("default_ip", "0.0.0.0")
+        data["data_interface"] = setting(dsp_settings, "data_interface")
+        data["default_ip"] = setting(dsp_settings, "default_ip")
 
         # Remote Control
         data["en_remote_control"] = self.remote_control
@@ -312,9 +307,9 @@ class WebInterface:
         data["en_beta_features"] = True if self.en_beta_features == [1] else False
 
         # Web Interface
-        data["en_hw_check"] = dsp_settings.get("en_hw_check", 0)
-        data["logging_level"] = dsp_settings.get("logging_level", DEFAULT_LOGGING_LEVEL)
-        data["disable_tooltips"] = dsp_settings.get("disable_tooltips", 0)
+        data["en_hw_check"] = setting(dsp_settings, "en_hw_check")
+        data["logging_level"] = setting(dsp_settings, "logging_level")
+        data["disable_tooltips"] = setting(dsp_settings, "disable_tooltips")
 
         # Output Data format. XML for Kerberos, CSV for Kracken, JSON future
         # XML, CSV, or JSON
@@ -360,81 +355,10 @@ class WebInterface:
             json.dump(data, outfile, indent=2)
 
     def load_default_configuration(self):
-        data = {}
-
-        # DAQ Configurations
-        data["center_freq"] = 416.588
-        data["uniform_gain"] = 15.7
-        data["data_interface"] = dsp_settings.get("data_interface", "shmem")
-        data["default_ip"] = dsp_settings.get("default_ip", "0.0.0.0")
-
-        # Remote Control
-        data["en_remote_control"] = False
-
-        # DOA Estimation
-        data["en_doa"] = True
-        data["ant_arrangement"] = "UCA"
-        data["ula_direction"] = "Both"
-        # self.module_signal_processor.DOA_inter_elem_space
-        data["ant_spacing_meters"] = 0.21
-        data["custom_array_x_meters"] = "0.21,0.06,-0.17,-0.17,0.07"
-        data["custom_array_y_meters"] = "0.00,-0.20,-0.12,0.12,0.20"
-        data["array_offset"] = 0
-
-        data["doa_method"] = "MUSIC"
-        data["doa_decorrelation_method"] = "Off"
-        data["compass_offset"] = 0
-        data["doa_fig_type"] = "Linear"
-        data["en_peak_hold"] = False
-        data["expected_num_of_sources"] = 1
-
-        # Open System Control
-        data["en_system_control"] = False
-        data["en_beta_features"] = False
-
-        # Web Interface
-        data["en_hw_check"] = 0
-        data["logging_level"] = DEFAULT_LOGGING_LEVEL
-        data["disable_tooltips"] = 0
-
-        # Output Data format. XML for Kerberos, CSV for Kracken, JSON future
-        # XML, CSV, or JSON
-        data["doa_data_format"] = "Kraken App"
-
-        # Station Information
-        data["station_id"] = "NOCALL"
-        data["location_source"] = "None"
-        data["latitude"] = 0
-        data["longitude"] = 0
-        data["heading"] = 0
-        data["krakenpro_key"] = "cb97235a"
-        data["mapping_server_url"] = "wss://map.krakenrf.com:2096"
-        data["rdf_mapper_server"] = "http://MY_RDF_MAPPER_SERVER.com/save.php"
-        data["gps_fixed_heading"] = False
-        data["gps_min_speed"] = 2
-        data["gps_min_speed_duration"] = 3
-
-        # VFO Information
-        data["spectrum_calculation"] = "Single"
-        data["vfo_mode"] = "Standard"
-        data["vfo_default_squelch_mode"] = "Auto"
-        data["vfo_default_demod"] = "None"
-        data["vfo_default_iq"] = "False"
-        data["max_demod_timeout"] = 60
-        data["dsp_decimation"] = 1
-        data["active_vfos"] = 1
-        data["output_vfo"] = 0
-        data["en_optimize_short_bursts"] = False
-
-        for i in range(self.module_signal_processor.max_vfos):
-            data["vfo_bw_" + str(i)] = 12500
-            data["vfo_fir_order_factor_" + str(i)] = 2
-            data["vfo_freq_" + str(i)] = 416588000
-            data["vfo_squelch_mode_" + str(i)] = "Default"
-            data["vfo_squelch_" + str(i)] = -80
-            data["vfo_demod_" + str(i)] = "Default"
-            data["vfo_iq_" + str(i)] = "Default"
-
+        data = dict(DEFAULT_SETTINGS)
+        # Reset keeps the DAQ connection settings of the current file.
+        data["data_interface"] = setting(dsp_settings, "data_interface")
+        data["default_ip"] = setting(dsp_settings, "default_ip")
         data["ext_upd_flag"] = True
 
         with open(settings_file_path, "w") as outfile:

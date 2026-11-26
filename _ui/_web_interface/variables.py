@@ -125,6 +125,73 @@ AUTO_GAIN_VALUE = -100.0
 # settings.json "logging_level" times 10 is the Python logging level. 3 = WARNING, so errors are visible by default.
 DEFAULT_LOGGING_LEVEL = 3
 
+MAX_VFOS = 16  # SignalProcessor.max_vfos (kraken_sdr_signal_processor.py:151)
+DEFAULT_CENTER_FREQ_MHZ = 416.588
+
+# The one set of settings.json defaults, used at startup, by the settings watcher and by Reset (finding D-24).
+# Where the three used to disagree, the startup value was kept. Order follows save_configuration().
+DEFAULT_SETTINGS = {
+    "center_freq": DEFAULT_CENTER_FREQ_MHZ,
+    "uniform_gain": 15.7,
+    "data_interface": "shmem",
+    "default_ip": "0.0.0.0",
+    "en_remote_control": False,
+    "en_doa": True,
+    "ant_arrangement": "UCA",
+    "ula_direction": "Both",
+    "ant_spacing_meters": 0.21,
+    "custom_array_x_meters": "0.21,0.06,-0.17,-0.17,0.07",
+    "custom_array_y_meters": "0.0,-0.2,-0.12,0.12,0.2",
+    "array_offset": 0,
+    "doa_method": "MUSIC",
+    "doa_decorrelation_method": "Off",
+    "compass_offset": 0,
+    "doa_fig_type": "Linear",
+    "en_peak_hold": False,
+    "expected_num_of_sources": 1,
+    "en_system_control": False,
+    "en_beta_features": False,
+    "en_hw_check": 0,
+    "logging_level": DEFAULT_LOGGING_LEVEL,
+    "disable_tooltips": 0,
+    "doa_data_format": "Kraken App",
+    "station_id": "NOCALL",
+    "location_source": "None",
+    "latitude": 0.0,
+    "longitude": 0.0,
+    "heading": 0.0,
+    "krakenpro_key": "0ae4ca6b3",
+    "mapping_server_url": DEFAULT_MAPPING_SERVER_ENDPOINT,
+    "rdf_mapper_server": "http://MY_RDF_MAPPER_SERVER.com/save.php",
+    "gps_fixed_heading": False,
+    "gps_min_speed": 2,
+    "gps_min_speed_duration": 3,
+    "spectrum_calculation": "Single",
+    "vfo_mode": "Standard",
+    "vfo_default_squelch_mode": "Auto",
+    "vfo_default_demod": "None",
+    "vfo_default_iq": "False",
+    "max_demod_timeout": 60,
+    "dsp_decimation": 1,
+    "active_vfos": 1,
+    "output_vfo": 0,
+    "en_optimize_short_bursts": False,
+}
+for _vfo in range(MAX_VFOS):
+    DEFAULT_SETTINGS[f"vfo_bw_{_vfo}"] = 12500
+    DEFAULT_SETTINGS[f"vfo_fir_order_factor_{_vfo}"] = 2
+    DEFAULT_SETTINGS[f"vfo_freq_{_vfo}"] = DEFAULT_CENTER_FREQ_MHZ * 1e6  # Hz; a missing VFO frequency means center
+    DEFAULT_SETTINGS[f"vfo_squelch_mode_{_vfo}"] = "Default"
+    DEFAULT_SETTINGS[f"vfo_squelch_{_vfo}"] = -120
+    DEFAULT_SETTINGS[f"vfo_demod_{_vfo}"] = "Default"
+    DEFAULT_SETTINGS[f"vfo_iq_{_vfo}"] = "Default"
+
+
+def setting(settings, key):
+    """settings[key], or its default from DEFAULT_SETTINGS."""
+    return settings.get(key, DEFAULT_SETTINGS[key])
+
+
 AGC_WARNING = "WARNING: Automatic gain control might lead to erroneous results because (a) it can overshoot and overdrive ADC and (b) gains are controlled independently on each channel."
 AGC_WARNING_DISABLED_STYLE = {"display": "none"}
 AGC_WARNING_ENABLED_STYLE = {"color": "#f39c12", "display": "block"}

@@ -3,6 +3,7 @@
 usage: ui_probe.py <sandbox _ui/_web_interface dir> layout
        ui_probe.py <sandbox _ui/_web_interface dir> server <port>
        ui_probe.py <sandbox _ui/_web_interface dir> logging
+       ui_probe.py <sandbox _ui/_web_interface dir> defaults
 """
 
 import json
@@ -105,6 +106,35 @@ def server_facts(app, port):
     app.app.run_server(debug=False, host="127.0.0.1", port=port)
 
 
+def default_settings_by_path():
+    """settings.json as written after a start with no settings file, after Reset, and after the watcher loaded an
+    empty settings file. All three must hold the same defaults (finding D-24)."""
+    import math
+
+    import utils
+    import variables
+    from maindash import web_interface
+
+    settings_path = variables.settings_file_path
+
+    def saved():
+        web_interface.save_configuration()
+        with open(settings_path, encoding="utf-8") as file:
+            return json.load(file)
+
+    startup = saved()
+    web_interface.load_default_configuration()
+    with open(settings_path, encoding="utf-8") as file:
+        reset = json.load(file)
+    with open(settings_path, "w", encoding="utf-8") as file:
+        file.write("{}")
+    variables.dsp_settings = {"timestamp": -math.inf}
+    utils.settings_change_watcher(web_interface, settings_path)
+    web_interface.settings_change_timer.cancel()
+    watcher = saved()
+    return {"startup": startup, "reset": reset, "watcher": watcher}
+
+
 def main():
     web_interface_dir, mode = sys.argv[1], sys.argv[2]
     app = import_ui(web_interface_dir)
@@ -114,6 +144,9 @@ def main():
             logging.getLogger(name).error("probe error from %s", name)
             logging.getLogger(name).info("probe info from %s", name)
         print(json.dumps({"ok": True}), flush=True)
+        os._exit(0)
+    if mode == "defaults":
+        print(json.dumps(default_settings_by_path()), flush=True)
         os._exit(0)
     if mode == "layout":
         print(json.dumps(layout_facts(app)), flush=True)
