@@ -1,5 +1,6 @@
 # The comparison rule of benchmarks/bench_frame.py (used as the "before/after" gate of every speed task).
 import importlib.util
+import statistics
 
 import pytest
 from conftest import REPO_ROOT
@@ -54,3 +55,37 @@ def test_compare_fails_on_any_non_same_config(bench, capsys):
     assert bench.compare(baseline, {"machine": MACHINE, "configs": {"a": stats(10.1, 0.1), "b": stats(20.0, 0.1)}})
     assert not bench.compare(baseline, {"machine": MACHINE, "configs": {"a": stats(12.0, 0.1), "b": stats(20.0, 0.1)}})
     assert not bench.compare(baseline, {"machine": MACHINE, "configs": {"a": stats(10.0, 0.1)}})
+
+
+# Paired A/B rounds (follow-up 2): verdicts from per-round differences B - A.
+A_ROUNDS = [100.0, 101.0, 99.0, 100.5, 99.5, 100.0]  # spread 2 ms, inside the 5 ms limit
+A_MADS = [1.0] * 6
+
+
+@pytest.mark.parametrize(
+    "differences, expected",
+    [
+        ([+8, +7, +9, +8, +7, +8], "slower"),  # same sign in 6 of 6, median 8 > limit 5
+        ([+8, +7, -1, +8, +7, +8], "slower"),  # 5 of 6 (83 %)
+        ([+8, +7, -1, -2, +7, +8], "same"),  # 4 of 6 (67 %) is not enough
+        ([+3, +2, +4, +3, +2, +3], "same"),  # consistent sign, but the median 3 is inside the limit
+        ([-8, -7, -9, -8, -7, -8], "faster"),
+        ([+8, -7, +9, -8, +7, -8], "same"),  # same code, noisy machine
+    ],
+)
+def test_paired_verdict(bench, differences, expected):
+    b_rounds = [a + d for a, d in zip(A_ROUNDS, differences)]
+    verdict, median_difference, limit = bench.paired_verdict(A_ROUNDS, b_rounds, A_MADS)
+    assert verdict == expected
+    assert limit == 5.0
+    assert median_difference == pytest.approx(statistics.median(differences))
+
+
+def test_paired_verdict_is_invalid_when_a_drifts(bench):
+    drifting_a = [100.0, 104.0, 98.0, 106.0, 100.0, 101.0]  # spread 8 ms > limit 5 ms
+    assert bench.paired_verdict(drifting_a, [a + 10 for a in drifting_a], A_MADS)[0] == "invalid"
+
+
+def test_paired_verdict_needs_five_rounds(bench):
+    with pytest.raises(ValueError, match="5 rounds"):
+        bench.paired_verdict(A_ROUNDS[:4], A_ROUNDS[:4], A_MADS[:4])

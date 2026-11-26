@@ -7,7 +7,8 @@ Usage, from the repository root (pin to one otherwise idle core):
     ... bench_frame.py --ab <dir holding the reference code>      # interleaved A/B in one session
 
 For --ab, export the reference code first, for example `git archive <ref> | tar -x -C /tmp/kraken_ref`. Rounds
-alternate A (that directory) and B (this checkout), each in a fresh process.
+alternate A (that directory) and B (this checkout), each in a fresh process. The A/B verdict comes from the paired
+per-round differences B - A (see paired_verdict); at least 5 rounds are needed.
 
 The frame time is the `update_rate` the DSP reports itself (kraken_sdr_signal_processor.py:365,906-908): from the
 end of frame acquisition to just before the packet is queued. Shared-memory copy time is not included.
@@ -237,6 +238,36 @@ def summarize_rounds(rounds):
     return merged
 
 
+MIN_PAIRED_ROUNDS = 5
+SAME_SIGN_FRACTION = 0.8  # e.g. 5 of 6 rounds
+
+
+def paired_verdict(a_round_medians, b_round_medians, a_round_mads):
+    """Verdict for one config of an interleaved A/B run, from the paired per-round differences B - A.
+
+    Returns (verdict, median difference ms, limit ms). The limit is the usual max(5 %, 3 x MAD) of A. "invalid" when
+    A's own round medians spread beyond the limit; "faster" or "slower" only when at least 80 % of the rounds agree on
+    the sign and the median difference exceeds the limit; otherwise "same".
+    """
+    rounds = len(a_round_medians)
+    if rounds < MIN_PAIRED_ROUNDS or len(b_round_medians) != rounds:
+        raise ValueError(f"a paired comparison needs at least {MIN_PAIRED_ROUNDS} rounds of A and B, got {rounds}")
+    a_median = statistics.median(a_round_medians)
+    limit = max(RELATIVE_LIMIT * a_median, MAD_LIMIT_FACTOR * statistics.median(a_round_mads))
+    differences = [b - a for a, b in zip(a_round_medians, b_round_medians)]
+    median_difference = statistics.median(differences)
+    if max(a_round_medians) - min(a_round_medians) > limit:
+        return "invalid", median_difference, limit
+    slower_rounds = sum(1 for difference in differences if difference > 0)
+    faster_rounds = sum(1 for difference in differences if difference < 0)
+    if abs(median_difference) > limit:
+        if median_difference > 0 and slower_rounds >= SAME_SIGN_FRACTION * rounds:
+            return "slower", median_difference, limit
+        if median_difference < 0 and faster_rounds >= SAME_SIGN_FRACTION * rounds:
+            return "faster", median_difference, limit
+    return "same", median_difference, limit
+
+
 def run_ab(reference_root, rounds, frames, only, workdir):
     """Alternates A (reference_root) and B (this checkout), each in a fresh process, then compares B against A."""
     sides = {"A": [], "B": []}
@@ -251,9 +282,20 @@ def run_ab(reference_root, rounds, frames, only, workdir):
             subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
             sides[side].append(json.loads(out.read_text()))
     a, b = summarize_rounds(sides["A"]), summarize_rounds(sides["B"])
+    check_comparable(a["machine"], b["machine"])
+    all_same = True
+    print(f"{'config':36s} {'A median':>9s} {'B-A median':>10s} {'limit':>7s}  verdict   (round medians A | B)")
     for name in a["configs"]:
-        print(f"{name:36s} A {a['configs'][name]['round_medians_ms']}  B {b['configs'][name]['round_medians_ms']}")
-    return compare(a, b)
+        a_medians = a["configs"][name]["round_medians_ms"]
+        b_medians = b["configs"][name]["round_medians_ms"]
+        a_mads = [one_round["configs"][name]["mad_ms"] for one_round in sides["A"]]
+        result, difference, limit = paired_verdict(a_medians, b_medians, a_mads)
+        all_same = all_same and result == "same"
+        print(
+            f"{name:36s} {statistics.median(a_medians):9.2f} {difference:+10.2f} {limit:7.2f}  {result:8s}  "
+            f"({a_medians} | {b_medians})"
+        )
+    return all_same
 
 
 def main():
@@ -263,7 +305,7 @@ def main():
     parser.add_argument("--out", help="write the result JSON here")
     parser.add_argument("--compare", help="baseline JSON to compare the medians against")
     parser.add_argument("--ab", help="directory holding the reference code (A); runs an interleaved A/B comparison")
-    parser.add_argument("--rounds", type=int, default=4, help="A/B rounds (each round runs A, then B)")
+    parser.add_argument("--rounds", type=int, default=6, help="A/B rounds, at least 5 (each runs A, then B)")
     parser.add_argument("--code-root", default=str(REPO_ROOT), help="import the DSP from this directory")
     args = parser.parse_args()
 
