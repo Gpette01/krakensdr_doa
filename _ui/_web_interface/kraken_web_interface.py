@@ -29,6 +29,7 @@ from utils import (
     load_daq_ini,
     parse_custom_array,
     settings_change_watcher,
+    spacing_wavelengths,
     wavelength_m,
 )
 
@@ -86,23 +87,10 @@ class WebInterface:
         self.module_signal_processor.DOA_ant_alignment = setting(dsp_settings, "ant_arrangement")
         self.module_signal_processor.doa_measure = self._doa_fig_type
         self.ant_spacing_meters = float(setting(dsp_settings, "ant_spacing_meters"))
-
         if self.module_signal_processor.DOA_ant_alignment == "UCA":
             self.module_signal_processor.DOA_UCA_radius_m = self.ant_spacing_meters
-            # Convert RADIUS to INTERELEMENT SPACING
-            inter_elem_spacing = (
-                np.sqrt(2)
-                * self.ant_spacing_meters
-                * np.sqrt(1 - np.cos(np.deg2rad(360 / self.module_signal_processor.channel_number)))
-            )
-            self.module_signal_processor.DOA_inter_elem_space = inter_elem_spacing / wavelength_m(
-                self.module_receiver.daq_center_freq
-            )
         else:
             self.module_signal_processor.DOA_UCA_radius_m = np.inf
-            self.module_signal_processor.DOA_inter_elem_space = self.ant_spacing_meters / wavelength_m(
-                self.module_receiver.daq_center_freq
-            )
 
         self.module_signal_processor.ula_direction = setting(dsp_settings, "ula_direction")
         self.module_signal_processor.DOA_algorithm = setting(dsp_settings, "doa_method")
@@ -184,6 +172,13 @@ class WebInterface:
         )
         self.module_signal_processor.custom_array_y = self.custom_array_y_meters / wavelength_m(
             self.module_receiver.daq_center_freq
+        )
+        # The channel count of the ini, not the DSP default of 4 (finding P-15).
+        self.module_signal_processor.DOA_inter_elem_space = spacing_wavelengths(
+            self.module_signal_processor.DOA_ant_alignment,
+            self.ant_spacing_meters,
+            channels,
+            self.module_receiver.daq_center_freq,
         )
 
         if self.daq_ini_cfg_dict is None:

@@ -1,7 +1,6 @@
-import numpy as np
 from dash_devices.dependencies import Input, Output, State
 from maindash import app, web_interface
-from utils import get_agc_warning_style_from_gain, wavelength_m
+from utils import array_element_count, get_agc_warning_style_from_gain, spacing_wavelengths
 
 
 @app.callback_shared(
@@ -30,18 +29,12 @@ def update_daq_params(input_value, f0, gain):
             ):
                 web_interface.module_signal_processor.vfo_freq[i] = f0 * 10**6
 
-        wavelength = wavelength_m(f0 * 1e6)
-
-        if web_interface.module_signal_processor.DOA_ant_alignment == "UCA":
-            # Convert RADIUS to INTERELEMENT SPACING
-            inter_elem_spacing = (
-                np.sqrt(2)
-                * web_interface.ant_spacing_meters
-                * np.sqrt(1 - np.cos(np.deg2rad(360 / web_interface.module_signal_processor.channel_number)))
-            )
-            web_interface.module_signal_processor.DOA_inter_elem_space = inter_elem_spacing / wavelength
-        else:
-            web_interface.module_signal_processor.DOA_inter_elem_space = web_interface.ant_spacing_meters / wavelength
+        web_interface.module_signal_processor.DOA_inter_elem_space = spacing_wavelengths(
+            web_interface.module_signal_processor.DOA_ant_alignment,
+            web_interface.ant_spacing_meters,
+            array_element_count(web_interface),
+            f0 * 1e6,
+        )
 
         ant_spacing_wavelength = round(web_interface.module_signal_processor.DOA_inter_elem_space, 3)
         app.push_mods(

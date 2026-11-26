@@ -79,6 +79,9 @@ DEFAULT_VFO_FIR_ORDER_FACTOR = int(2)
 DEFAULT_ROOT_MUSIC_STD_DEGREES = 1
 
 NEAR_ZERO = 1e-15
+# m/s: the 300 m*MHz shortcut the UI uses to turn metres into wavelengths. Moving every path to the exact speed of
+# light is a separate numeric task (M2-03 keeps this value so that the stored results stay the same).
+SPEED_OF_LIGHT_SHORTCUT = 300e6
 FRAME_FAILURE_LOG_INTERVAL_S = 10.0  # at most one traceback per 10 s when frames keep failing
 
 
@@ -1050,9 +1053,10 @@ class SignalProcessor(threading.Thread):
                 M, inter_element_spacing, antennas_alignment, int(self.array_offset)
             )
         elif antennas_alignment == "UCA":
-            scanning_vectors = gen_scanning_vectors(
-                M, inter_element_spacing, antennas_alignment, int(self.array_offset)
-            )
+            # The radius itself: the spacing the UI stores for a UCA is a chord that depends on a channel count
+            # (finding P-15).
+            radius_wavelengths = self.DOA_UCA_radius_m * vfo_freq / SPEED_OF_LIGHT_SHORTCUT
+            scanning_vectors = gen_scanning_vectors(M, radius_wavelengths, antennas_alignment, int(self.array_offset))
         elif antennas_alignment == "VULA":
             L = R.shape[0] // 2
             scanning_vectors = gen_scanning_vectors_phase_modes_space(L, self.array_offset)
@@ -1672,19 +1676,17 @@ def gen_scanning_vectors_phase_modes_space(L, offset):
 
 # LRU cache memoize about 1000x faster.
 @lru_cache(maxsize=32)
-def gen_scanning_vectors(M, DOA_inter_elem_space, type, offset):
+def gen_scanning_vectors(M, size_wavelengths, type, offset):
+    """size_wavelengths: the element spacing of a ULA, or the radius of a UCA, in wavelengths."""
     thetas = np.linspace(
         0, 359, 360
     )  # Remember to change self.DOA_thetas too, we didn't include that in this function due to memoization cannot work with arrays
     if type == "UCA":
-        # convert UCA inter element spacing back to its radius
-        to_r = 1.0 / (np.sqrt(2.0) * np.sqrt(1.0 - np.cos(2.0 * np.pi / M)))
-        r = DOA_inter_elem_space * to_r
-        x = r * np.cos(2 * np.pi / M * np.arange(M))
-        y = -r * np.sin(2 * np.pi / M * np.arange(M))  # For this specific array only
+        x = size_wavelengths * np.cos(2 * np.pi / M * np.arange(M))
+        y = -size_wavelengths * np.sin(2 * np.pi / M * np.arange(M))  # For this specific array only
     elif "ULA":
         x = np.zeros(M)
-        y = -np.arange(M) * DOA_inter_elem_space
+        y = -np.arange(M) * size_wavelengths
 
     scanning_vectors = np.zeros((M, thetas.size), dtype=np.complex64)
     for i in range(thetas.size):

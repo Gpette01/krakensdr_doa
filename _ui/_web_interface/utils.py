@@ -17,6 +17,7 @@ from variables import (
     AGC_WARNING_ENABLED_STYLE,
     AUTO_GAIN_VALUE,
     HZ_TO_MHZ,
+    KRAKENSDR_CHANNELS,
     daq_config_filename,
     doa_fig,
     setting,
@@ -314,21 +315,17 @@ def settings_change_watcher(web_interface, settings_file_path, last_attempt_fail
                 wavelength = wavelength_m(web_interface.daq_center_freq * 1e6)
                 if web_interface.module_signal_processor.DOA_ant_alignment == "UCA":
                     web_interface.module_signal_processor.DOA_UCA_radius_m = web_interface.ant_spacing_meters
-                    # Convert RADIUS to INTERELEMENT SPACING
-                    inter_elem_spacing = (
-                        np.sqrt(2)
-                        * web_interface.ant_spacing_meters
-                        * np.sqrt(1 - np.cos(np.deg2rad(360 / web_interface.module_signal_processor.channel_number)))
-                    )
-                    web_interface.module_signal_processor.DOA_inter_elem_space = inter_elem_spacing / wavelength
                 else:
                     web_interface.module_signal_processor.DOA_UCA_radius_m = np.inf
-                    web_interface.module_signal_processor.DOA_inter_elem_space = (
-                        web_interface.ant_spacing_meters / wavelength
-                    )
+                web_interface.module_signal_processor.DOA_inter_elem_space = spacing_wavelengths(
+                    web_interface.module_signal_processor.DOA_ant_alignment,
+                    web_interface.ant_spacing_meters,
+                    array_element_count(web_interface),
+                    web_interface.daq_center_freq * 1e6,
+                )
 
                 # One coordinate per channel, like the UI field; bad text keeps the previous array (follow-up to M1-06).
-                channels = custom_array_element_count(web_interface)
+                channels = array_element_count(web_interface)
                 custom_x = parse_custom_array(setting(dsp_settings, "custom_array_x_meters"), channels)
                 custom_y = parse_custom_array(setting(dsp_settings, "custom_array_y_meters"), channels)
                 if custom_x is None or custom_y is None:
@@ -426,20 +423,12 @@ def settings_change_watcher(web_interface, settings_file_path, last_attempt_fail
                         web_interface.custom_array_y_meters / wavelength
                     )
 
-                    if web_interface.module_signal_processor.DOA_ant_alignment == "UCA":
-                        # Convert RADIUS to INTERELEMENT SPACING
-                        inter_elem_spacing = (
-                            np.sqrt(2)
-                            * web_interface.ant_spacing_meters
-                            * np.sqrt(
-                                1 - np.cos(np.deg2rad(360 / web_interface.module_signal_processor.channel_number))
-                            )
-                        )
-                        web_interface.module_signal_processor.DOA_inter_elem_space = inter_elem_spacing / wavelength
-                    else:
-                        web_interface.module_signal_processor.DOA_inter_elem_space = (
-                            web_interface.ant_spacing_meters / wavelength
-                        )
+                    web_interface.module_signal_processor.DOA_inter_elem_space = spacing_wavelengths(
+                        web_interface.module_signal_processor.DOA_ant_alignment,
+                        web_interface.ant_spacing_meters,
+                        array_element_count(web_interface),
+                        web_interface.daq_center_freq * 1e6,
+                    )
 
                 if dsp_settings.get("ext_upd_flag", False):
                     web_interface.needs_refresh = True
@@ -658,9 +647,20 @@ def format_custom_array(values):
     return ",".join(str(float(value)) for value in values)
 
 
-def custom_array_element_count(web_interface):
-    """Channel count from the DAQ ini (receiver M), else from the frames; the DSP value is 4 until the first frame."""
-    return web_interface.module_receiver.M or web_interface.module_signal_processor.channel_number
+def array_element_count(web_interface):
+    """Channel count from the DAQ ini or the DAQ header (receiver M), else the 5 of a KrakenSDR. The DSP channel count
+    is 4 until the first frame, so it is not used (finding P-15)."""
+    return web_interface.module_receiver.M or KRAKENSDR_CHANNELS
+
+
+def spacing_wavelengths(ant_arrangement, spacing_m, element_count, frequency_hz):
+    """Distance between neighbouring elements in wavelengths, for the label, the ambiguity warning and the ULA DSP.
+
+    For a UCA spacing_m is the radius and this is the chord. The DSP uses the radius itself (M2-03, finding P-15).
+    """
+    if ant_arrangement == "UCA":
+        spacing_m = 2 * spacing_m * np.sin(np.pi / element_count)
+    return spacing_m / wavelength_m(frequency_hz)
 
 
 def parse_custom_array(text, element_count):

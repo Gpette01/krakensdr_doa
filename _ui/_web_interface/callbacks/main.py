@@ -17,7 +17,7 @@ from kraken_sdr_signal_processor import SignalProcessor, xi
 from kraken_web_config import write_config_file_dict
 from kraken_web_spectrum import init_spectrum_fig
 from utils import (
-    custom_array_element_count,
+    array_element_count,
     fetch_dsp_data,
     fetch_gps_data,
     format_custom_array,
@@ -27,6 +27,7 @@ from utils import (
     read_config_file_dict,
     set_clicked,
     settings_change_watcher,
+    spacing_wavelengths,
     wavelength_m,
 )
 from variables import (
@@ -534,16 +535,14 @@ def update_dsp_params(
 
     if ant_arrangement == "UCA":
         web_interface.module_signal_processor.DOA_UCA_radius_m = web_interface.ant_spacing_meters
-        # Convert RADIUS to INTERELEMENT SPACING
-        inter_elem_spacing = (
-            np.sqrt(2)
-            * web_interface.ant_spacing_meters
-            * np.sqrt(1 - np.cos(np.deg2rad(360 / web_interface.module_signal_processor.channel_number)))
-        )
-        web_interface.module_signal_processor.DOA_inter_elem_space = inter_elem_spacing / wavelength
     else:
         web_interface.module_signal_processor.DOA_UCA_radius_m = np.inf
-        web_interface.module_signal_processor.DOA_inter_elem_space = web_interface.ant_spacing_meters / wavelength
+    web_interface.module_signal_processor.DOA_inter_elem_space = spacing_wavelengths(
+        ant_arrangement,
+        web_interface.ant_spacing_meters,
+        array_element_count(web_interface),
+        web_interface.daq_center_freq * 1e6,
+    )
 
     ant_spacing_wavelength = round(web_interface.module_signal_processor.DOA_inter_elem_space, 3)
 
@@ -551,7 +550,7 @@ def update_dsp_params(
 
     # Split CSV input in custom array
 
-    channels = custom_array_element_count(web_interface)
+    channels = array_element_count(web_interface)
     custom_x = parse_custom_array(custom_array_x_meters, channels)
     custom_y = parse_custom_array(custom_array_y_meters, channels)
     if custom_x is None or custom_y is None:
@@ -570,12 +569,7 @@ def update_dsp_params(
         max_phase_diff = web_interface.ant_spacing_meters / wavelength
         spacing_label = "Interelement Spacing [m]:"
     elif ant_arrangement == "UCA":
-        UCA_ant_spacing = (
-            np.sqrt(2)
-            * web_interface.ant_spacing_meters
-            * np.sqrt(1 - np.cos(np.deg2rad(360 / web_interface.module_signal_processor.channel_number)))
-        )
-        max_phase_diff = UCA_ant_spacing / wavelength
+        max_phase_diff = web_interface.module_signal_processor.DOA_inter_elem_space
         spacing_label = "Array Radius [m]:"
     elif ant_arrangement == "Custom":
         max_phase_diff = 0.25  # ant_spacing_meter / wavelength
@@ -1129,6 +1123,7 @@ def reconfig_daq_chain(input_value, freq, gain):
 
     DOA_ant_alignment = web_interface.module_signal_processor.DOA_ant_alignment
     DOA_inter_elem_space = web_interface.module_signal_processor.DOA_inter_elem_space
+    DOA_UCA_radius_m = web_interface.module_signal_processor.DOA_UCA_radius_m  # the UCA scan uses it (M2-03)
     en_DOA_estimation = web_interface.module_signal_processor.en_DOA_estimation
     doa_decorrelation_method = web_interface.module_signal_processor.DOA_decorrelation_method
     ula_direction = web_interface.module_signal_processor.ula_direction
@@ -1162,6 +1157,7 @@ def reconfig_daq_chain(input_value, freq, gain):
     )
     web_interface.module_signal_processor.DOA_ant_alignment = DOA_ant_alignment
     web_interface.module_signal_processor.DOA_inter_elem_space = DOA_inter_elem_space
+    web_interface.module_signal_processor.DOA_UCA_radius_m = DOA_UCA_radius_m
     web_interface.module_signal_processor.en_DOA_estimation = en_DOA_estimation
     web_interface.module_signal_processor.DOA_decorrelation_method = doa_decorrelation_method
     web_interface.module_signal_processor.ula_direction = ula_direction

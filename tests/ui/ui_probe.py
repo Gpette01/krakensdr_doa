@@ -196,6 +196,12 @@ def main():
         facts = {
             "active_daq_ini_cfg": web_interface.active_daq_ini_cfg,
             "dsp_thread_started": getattr(web_interface.module_signal_processor, "start_called", False),
+            "dsp_geometry": {
+                name: float(getattr(web_interface.module_signal_processor, name))
+                for name in ("DOA_UCA_radius_m", "DOA_inter_elem_space", "array_offset")
+            },
+            "dsp_alignment": web_interface.module_signal_processor.DOA_ant_alignment,
+            "daq_center_freq": float(web_interface.module_receiver.daq_center_freq),
             "config_page_text": json.dumps(page.to_plotly_json(), cls=plotly_encoder())[:200000],
         }
         print(json.dumps(facts), flush=True)
