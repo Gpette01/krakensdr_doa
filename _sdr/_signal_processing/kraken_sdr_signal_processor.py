@@ -79,6 +79,7 @@ DEFAULT_VFO_FIR_ORDER_FACTOR = int(2)
 DEFAULT_ROOT_MUSIC_STD_DEGREES = 1
 
 NEAR_ZERO = 1e-15
+FRAME_FAILURE_LOG_INTERVAL_S = 10.0  # at most one traceback per 10 s when frames keep failing
 
 
 class SignalProcessor(threading.Thread):
@@ -235,6 +236,9 @@ class SignalProcessor(threading.Thread):
         self.adc_overdrive = False
         # Keys of the warnings already logged by warn_once(), so a persistent condition logs once, not every frame.
         self.warnings_logged = set()
+        # Rate limit for the traceback of a failed frame (see run()).
+        self.last_frame_failure_log = -math.inf
+        self.frame_failures_not_logged = 0
         self.number_of_correlated_sources = []
         self.snrs = []
         self.dropped_frames = 0
@@ -355,8 +359,27 @@ class SignalProcessor(threading.Thread):
 
     def run(self):
         """
-        Main processing thread
+        Main processing thread. A frame that raises is logged (rate-limited) and processing resumes, because any
+        exception outside the DoA block used to end this thread for good (finding D-10).
         """
+        while True:
+            try:
+                self.processing_loop()
+            except Exception:
+                now = time.monotonic()
+                self.frame_failures_not_logged += 1
+                if now - self.last_frame_failure_log >= FRAME_FAILURE_LOG_INTERVAL_S:
+                    self.logger.exception(
+                        "Frame processing failed (%d failure(s) since the last report); processing resumes in 1 s.",
+                        self.frame_failures_not_logged,
+                    )
+                    self.last_frame_failure_log = now
+                    self.frame_failures_not_logged = 0
+            finally:
+                self.is_running = False
+
+    def processing_loop(self):
+        """The frame loop. Returns only by raising; run() restarts it after its 1 s start-up pause."""
         # scipy.fft.set_workers(4)
         while True:
             self.is_running = False

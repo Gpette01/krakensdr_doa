@@ -111,12 +111,8 @@ def test_control_port_receives_init_freq_gain(pipeline):
     assert pipeline["receiver_queue"][0] == "conn-ok"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-03: the DSP thread dies with struct.error when the DAQ closes the FIFO",
-)
 def test_dsp_thread_survives_the_daq_going_away(pipeline):
+    """Failed before M1-09 (T-03): struct.error on the closed FIFO ended the DSP thread."""
     assert pipeline["dsp_thread_alive"], pipeline["dsp_thread_exceptions"]
 
 

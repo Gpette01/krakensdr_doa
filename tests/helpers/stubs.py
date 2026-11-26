@@ -6,11 +6,10 @@ import time
 from helpers import synth
 
 
-class StopFrames(Exception):
-    """Raised by the stub receiver after the last frame.
+class StopFrames(BaseException):
+    """Raised by the stub receiver after the last frame, to end the otherwise endless run() loop.
 
-    get_iq_online() is called outside the try block of run() (kraken_sdr_signal_processor.py:363),
-    so this exception ends the otherwise endless loop.
+    A BaseException, like KeyboardInterrupt: run() keeps going after any Exception in a frame (finding D-10).
     """
 
 
