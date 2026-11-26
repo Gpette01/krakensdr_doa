@@ -8,7 +8,6 @@ UCA_XY_M = tuple(tuple(axis) for axis in synth.element_positions("UCA"))
 # Cases whose stored output is known to be wrong today. A fix shows up as an intended change in the diff table.
 KNOWN_BUGS = {
     "ULA/ROOT-MUSIC/250deg/0dB": "P-02",
-    "UCA/MUSIC/FBTOEP/211deg": "P-16",
     "offset30/UCA/MUSIC/FBA/123deg": "P-03",
 }
 
@@ -32,6 +31,7 @@ def golden_cases():
     cases.append(Case("ULA/ROOT-MUSIC/250deg/0dB", "ULA", "ROOT-MUSIC", [(250, 0, F_OFF)], seed=13))
     for angle in (37, 299):
         cases.append(Case(f"UCA/MUSIC/{angle}deg/-15dB", "UCA", "MUSIC", [(angle, -15, F_OFF)], seed=14))
+    # FBTOEP was removed in M2-04: a stored FBTOEP runs as "Off".
     for decorrelation in ("FBA", "TOEP", "FBSS", "FBTOEP"):
         cases.append(
             Case(

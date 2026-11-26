@@ -6,6 +6,7 @@ usage: ui_probe.py <sandbox _ui/_web_interface dir> layout
        ui_probe.py <sandbox _ui/_web_interface dir> defaults
        ui_probe.py <sandbox _ui/_web_interface dir> startup_state
        ui_probe.py <sandbox _ui/_web_interface dir> custom_array <cases json>
+       ui_probe.py <sandbox _ui/_web_interface dir> decorrelation
 """
 
 import json
@@ -146,6 +147,30 @@ def np_array(values):
     return numpy.array(values, dtype=numpy.float64)
 
 
+def decorrelation_by_path():
+    """The decorrelation options, and the method a stored "FBTOEP" loads as at startup and in the watcher (M2-04)."""
+    import math
+
+    import kraken_web_interface
+    import utils
+    import variables
+    from maindash import web_interface
+
+    kraken_web_interface.dsp_settings = {"timestamp": 0.0, "doa_decorrelation_method": "FBTOEP"}
+    started = kraken_web_interface.WebInterface()
+    started.settings_change_timer.cancel()
+    with open(variables.settings_file_path, "w", encoding="utf-8") as file:
+        json.dump({"doa_decorrelation_method": "FBTOEP"}, file)
+    variables.dsp_settings = {"timestamp": -math.inf}
+    utils.settings_change_watcher(web_interface, variables.settings_file_path)
+    web_interface.settings_change_timer.cancel()
+    return {
+        "options": [option["value"] for option in variables.DECORRELATION_OPTIONS],
+        "startup": started.module_signal_processor.DOA_decorrelation_method,
+        "watcher": web_interface.module_signal_processor.DOA_decorrelation_method,
+    }
+
+
 def default_settings_by_path():
     """settings.json as written after a start with no settings file, after Reset, and after the watcher loaded an
     empty settings file. All three must hold the same defaults (finding D-24)."""
@@ -184,6 +209,9 @@ def main():
             logging.getLogger(name).error("probe error from %s", name)
             logging.getLogger(name).info("probe info from %s", name)
         print(json.dumps({"ok": True}), flush=True)
+        os._exit(0)
+    if mode == "decorrelation":
+        print(json.dumps(decorrelation_by_path()), flush=True)
         os._exit(0)
     if mode == "custom_array":
         print(json.dumps(custom_array_by_path(sys.argv[3])), flush=True)

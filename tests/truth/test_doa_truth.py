@@ -281,16 +281,13 @@ def test_ula_root_music_agrees_with_music(results, pair):
     ), f"MUSIC {music_estimate}, ROOT-MUSIC {root_estimate}"
 
 
-@xfail("P-16, T-07: 'F-B Toeplitz' has no code path in estimate_DOA")
-def test_fb_toeplitz_option_changes_the_processing(make_sp):
-    """The UI offers FBTOEP (variables.py:107). If it did anything, its spectrum would differ from an unknown name."""
+def test_an_unknown_decorrelation_method_runs_as_off(make_sp):
+    """M2-04 removed "F-B Toeplitz" (P-16, T-07). A method name the DSP does not know, such as a stored FBTOEP,
+    gives the result of "Off". It used to switch a UCA to the virtual array with no decorrelation."""
     cases = [
         Case(f"UCA/MUSIC/{name}/123deg", "UCA", "MUSIC", [(123, 0, F_OFF)], decorrelation=name)
-        for name in ("FBTOEP", "NOT_A_METHOD")
+        for name in ("FBTOEP", "Off")
     ]
-    fbtoep, unknown = run_cases(make_sp, cases)
-    assert fbtoep.usable_estimate() is not None, fbtoep.describe()
-    assert abs(synth.angle_error(fbtoep.usable_estimate(), 123)) <= GRID_TOLERANCE_DEG, fbtoep.describe()
-    assert not np.array_equal(
-        fbtoep.packet["DoA Result"], unknown.packet["DoA Result"]
-    ), "the FBTOEP spectrum is identical to the spectrum for an unknown method name"
+    fbtoep, off = run_cases(make_sp, cases)
+    assert fbtoep.usable_estimate() == off.usable_estimate() == 123, (fbtoep.describe(), off.describe())
+    assert np.array_equal(fbtoep.packet["DoA Result"], off.packet["DoA Result"]), "FBTOEP spectrum differs from Off"

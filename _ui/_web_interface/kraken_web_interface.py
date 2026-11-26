@@ -25,6 +25,7 @@ from kraken_sdr_receiver import ReceiverRTLSDR
 # Import built-in modules
 from kraken_sdr_signal_processor import SignalProcessor
 from utils import (
+    decorrelation_method,
     format_custom_array,
     load_daq_ini,
     parse_custom_array,
@@ -99,7 +100,9 @@ class WebInterface:
         self.module_signal_processor.array_offset = int(setting(dsp_settings, "array_offset"))
 
         self.module_signal_processor.en_DOA_estimation = setting(dsp_settings, "en_doa")
-        self.module_signal_processor.DOA_decorrelation_method = setting(dsp_settings, "doa_decorrelation_method")
+        self.module_signal_processor.DOA_decorrelation_method = decorrelation_method(
+            setting(dsp_settings, "doa_decorrelation_method")
+        )
 
         # Output Data format.
         self.module_signal_processor.DOA_data_format = setting(dsp_settings, "doa_data_format")

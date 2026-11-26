@@ -16,6 +16,7 @@ from variables import (
     AGC_WARNING_DISABLED_STYLE,
     AGC_WARNING_ENABLED_STYLE,
     AUTO_GAIN_VALUE,
+    DECORRELATION_OPTIONS,
     HZ_TO_MHZ,
     KRAKENSDR_CHANNELS,
     daq_config_filename,
@@ -305,8 +306,8 @@ def settings_change_watcher(web_interface, settings_file_path, last_attempt_fail
                 web_interface.en_beta_features = [1] if setting(dsp_settings, "en_beta_features") else []
 
                 web_interface.module_signal_processor.en_DOA_estimation = setting(dsp_settings, "en_doa")
-                web_interface.module_signal_processor.DOA_decorrelation_method = setting(
-                    dsp_settings, "doa_decorrelation_method"
+                web_interface.module_signal_processor.DOA_decorrelation_method = decorrelation_method(
+                    setting(dsp_settings, "doa_decorrelation_method")
                 )
 
                 web_interface.module_signal_processor.DOA_ant_alignment = setting(dsp_settings, "ant_arrangement")
@@ -645,6 +646,13 @@ def wavelength_m(frequency_hz):
 def format_custom_array(values):
     """Text for the custom array fields and settings.json, without rounding (it used to round to 1 cm)."""
     return ",".join(str(float(value)) for value in values)
+
+
+def decorrelation_method(value):
+    """A decorrelation method from settings.json, or "Off" when the UI does not offer it. "F-B Toeplitz" (FBTOEP)
+    was removed in M2-04 (finding P-16); older settings files can still hold it."""
+    offered = [option["value"] for option in DECORRELATION_OPTIONS]
+    return value if value in offered else DECORRELATION_OPTIONS[0]["value"]
 
 
 def array_element_count(web_interface):

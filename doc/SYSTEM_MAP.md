@@ -158,7 +158,7 @@ Symbols: `M` = active antenna channels, `N` = samples per frame (`cpi_length`), 
 | 6 | Channelizer | `sp:1310-1331` | Hann FIR with `2q+1` taps, shifted to `Δf`, then `decimate` by `q`, then mixed down. | `complex128 (M, N/q)` |
 | 7a | Virtual ULA transform | `sp:936-944,1528-1569` | Only for UCA with ROOT-MUSIC or decorrelation. Phase mode count `L = floor(k*r)`. | `(2L+1, N/q)` |
 | 7b | Correlation matrix | `sp:947` | `R = X X^H / Nd`. Plain numpy. | `complex128 (M, M)` |
-| 7c | Decorrelation | `sp:950-962` | FBA: `R = (R + J R* J) / 2`. TOEP: Toeplitz from diagonal means. FBSS: `pyargus`. **FBTOEP: no branch exists.** | |
+| 7c | Decorrelation | `sp:950-962` | FBA: `R = (R + J R* J) / 2`. TOEP: Toeplitz from diagonal means. FBSS: `pyargus`. FBTOEP was removed in M2-04; an unknown name runs as Off. | |
 | 7d | Diagnostics | `sp:968,1499-1506` | `M - matrix_rank(R)` and an eigenvalue SNR. | |
 | 7e | Scanning vectors | `sp:1609-1668` | 360 vectors, one per degree. Cached, except for the custom array. | `complex64 (M, 360)` |
 | 7f | Estimator | `sp:995-1020` | Bartlett, Capon, MEM (`pyargus`), TNA, MUSIC, ROOT-MUSIC (local, numba). | 360 values |

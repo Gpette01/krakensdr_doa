@@ -104,7 +104,6 @@ DECORRELATION_OPTIONS = [
     {"label": "F-B Averaging", "value": "FBA"},
     {"label": "Toeplizification", "value": "TOEP"},
     {"label": "Spatial Smoothing", "value": "FBSS"},
-    {"label": "F-B Toeplitz", "value": "FBTOEP"},
 ]
 
 DOA_METHODS = [
