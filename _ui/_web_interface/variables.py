@@ -122,6 +122,9 @@ DEFAULT_MAPPING_SERVER_ENDPOINT = "wss://map.krakenrf.com:2096"
 
 AUTO_GAIN_VALUE = -100.0
 
+# settings.json "logging_level" times 10 is the Python logging level. 3 = WARNING, so errors are visible by default.
+DEFAULT_LOGGING_LEVEL = 3
+
 AGC_WARNING = "WARNING: Automatic gain control might lead to erroneous results because (a) it can overshoot and overdrive ADC and (b) gains are controlled independently on each channel."
 AGC_WARNING_DISABLED_STYLE = {"display": "none"}
 AGC_WARNING_ENABLED_STYLE = {"color": "#f39c12", "display": "block"}

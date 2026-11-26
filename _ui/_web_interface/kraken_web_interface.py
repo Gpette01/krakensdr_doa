@@ -11,6 +11,7 @@ from variables import (
     dsp_settings,
     DEFAULT_MAPPING_SERVER_ENDPOINT,
     AUTO_GAIN_VALUE,
+    DEFAULT_LOGGING_LEVEL,
     INVALID_SETTINGS_FILE_TIMESTAMP,
 )
 
@@ -28,7 +29,7 @@ class WebInterface:
     def __init__(self):
         self.user_interface = None
 
-        self.logging_level = dsp_settings.get("logging_level", 5) * 10
+        self.logging_level = dsp_settings.get("logging_level", DEFAULT_LOGGING_LEVEL) * 10
         logging.basicConfig(level=self.logging_level)
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(self.logging_level)
@@ -307,7 +308,7 @@ class WebInterface:
 
         # Web Interface
         data["en_hw_check"] = dsp_settings.get("en_hw_check", 0)
-        data["logging_level"] = dsp_settings.get("logging_level", 5)
+        data["logging_level"] = dsp_settings.get("logging_level", DEFAULT_LOGGING_LEVEL)
         data["disable_tooltips"] = dsp_settings.get("disable_tooltips", 0)
 
         # Output Data format. XML for Kerberos, CSV for Kracken, JSON future
@@ -388,7 +389,7 @@ class WebInterface:
 
         # Web Interface
         data["en_hw_check"] = 0
-        data["logging_level"] = 5
+        data["logging_level"] = DEFAULT_LOGGING_LEVEL
         data["disable_tooltips"] = 0
 
         # Output Data format. XML for Kerberos, CSV for Kracken, JSON future

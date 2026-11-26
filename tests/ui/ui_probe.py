@@ -2,9 +2,11 @@
 
 usage: ui_probe.py <sandbox _ui/_web_interface dir> layout
        ui_probe.py <sandbox _ui/_web_interface dir> server <port>
+       ui_probe.py <sandbox _ui/_web_interface dir> logging
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -106,6 +108,13 @@ def server_facts(app, port):
 def main():
     web_interface_dir, mode = sys.argv[1], sys.argv[2]
     app = import_ui(web_interface_dir)
+    if mode == "logging":
+        # Errors from the DSP, the receiver and the UI must reach stderr (ui.log) with default settings.
+        for name in ("kraken_sdr_signal_processor", "kraken_sdr_receiver", "kraken_web_interface"):
+            logging.getLogger(name).error("probe error from %s", name)
+            logging.getLogger(name).info("probe info from %s", name)
+        print(json.dumps({"ok": True}), flush=True)
+        os._exit(0)
     if mode == "layout":
         print(json.dumps(layout_facts(app)), flush=True)
         os._exit(0)
