@@ -1670,8 +1670,9 @@ def gen_scanning_vectors_custom(M, custom_x, custom_y):
     x = np.zeros(M, dtype=np.float32)
     y = np.zeros(M, dtype=np.float32)
 
+    # Extra coordinates are ignored; the arrays hold M elements (finding P-22).
     for i in range(len(custom_x)):
-        if i > M:
+        if i >= M:
             break
         if custom_x[i] == "":
             x[i] = 0
@@ -1679,9 +1680,9 @@ def gen_scanning_vectors_custom(M, custom_x, custom_y):
             x[i] = float(custom_x[i])
 
     for i in range(len(custom_y)):
-        if i > M:
+        if i >= M:
             break
-        if custom_x[i] == "":
+        if custom_y[i] == "":
             y[i] = 0
         else:
             y[i] = float(custom_y[i])

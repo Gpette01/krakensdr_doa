@@ -610,6 +610,18 @@ def is_float(string, minimum=-inf, maximum=inf):
         return False
 
 
+def parse_custom_array(text, element_count):
+    """Coordinates in metres from the comma-separated text field, or None when the text does not give exactly one
+    finite number per element (finding P-22: extra coordinates used to be written past the end of the DSP array)."""
+    try:
+        values = np.array([float(value) for value in text.split(",")])
+    except (AttributeError, ValueError):
+        return None
+    if len(values) != element_count or not np.all(np.isfinite(values)):
+        return None
+    return values
+
+
 def is_int(string, minimum=-inf, maximum=inf):
     try:
         i = int(string)

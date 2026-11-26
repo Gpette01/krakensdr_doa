@@ -34,13 +34,13 @@ import json, sys
 import numpy as np
 import kraken_sdr_signal_processor as ksp
 out = {}
-for count in (4, 5, 6):
-    x = np.linspace(0.1, 0.5, count)
-    y = np.linspace(0.0, 0.4, count)
+for x_count, y_count in ((4, 4), (5, 5), (6, 6), (5, 6), (4, 5)):
+    x = np.linspace(0.1, 0.5, x_count)
+    y = np.linspace(0.0, 0.4, y_count)
     try:
-        out[count] = list(ksp.gen_scanning_vectors_custom(5, x, y).shape)
+        out[f"{x_count},{y_count}"] = list(ksp.gen_scanning_vectors_custom(5, x, y).shape)
     except Exception as error:
-        out[count] = f"{type(error).__name__}: {error}"
+        out[f"{x_count},{y_count}"] = f"{type(error).__name__}: {error}"
 print(json.dumps(out))
 """
 
@@ -72,13 +72,13 @@ def custom_array_bounds_probe(tmp_path_factory):
     return json.loads(completed.stdout.strip().splitlines()[-1])
 
 
-@pytest.mark.parametrize(
-    "coordinate_count",
-    [4, 5, pytest.param(6, marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-22, T-08"))],
-)
-def test_custom_array_with_any_coordinate_count_stays_in_bounds(custom_array_bounds_probe, coordinate_count):
-    """5 channels with 4, 5 or 6 coordinates: no write past the end of the 5-row buffer (sp:1654-1668)."""
-    assert custom_array_bounds_probe[str(coordinate_count)] == [5, 360]
+@pytest.mark.parametrize("coordinate_counts", ["4,4", "5,5", "6,6", "5,6", "4,5"])
+def test_custom_array_with_any_coordinate_count_stays_in_bounds(custom_array_bounds_probe, coordinate_counts):
+    """5 channels with 4 to 6 x and y coordinates: no read or write past the end of an array (sp:1654-1668).
+
+    6 coordinates and the y loop that tested the x array failed before M1-06 (P-22, T-08).
+    """
+    assert custom_array_bounds_probe[coordinate_counts] == [5, 360]
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="P-24")

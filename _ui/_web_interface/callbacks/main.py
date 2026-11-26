@@ -21,6 +21,7 @@ from utils import (
     fetch_gps_data,
     is_float,
     is_int,
+    parse_custom_array,
     read_config_file_dict,
     set_clicked,
     settings_change_watcher,
@@ -547,8 +548,18 @@ def update_dsp_params(
 
     # Split CSV input in custom array
 
-    web_interface.custom_array_x_meters = np.float_(custom_array_x_meters.split(","))
-    web_interface.custom_array_y_meters = np.float_(custom_array_y_meters.split(","))
+    # The channel count from the DAQ ini (kraken_web_interface.py:244) or from the frames; the DSP value is 4 until the
+    # first frame arrives.
+    channels = web_interface.module_receiver.M or web_interface.module_signal_processor.channel_number
+    custom_x = parse_custom_array(custom_array_x_meters, channels)
+    custom_y = parse_custom_array(custom_array_y_meters, channels)
+    if custom_x is None or custom_y is None:
+        web_interface.logger.warning(
+            "Custom array: X and Y need %d comma-separated numbers each; keeping the previous coordinates.", channels
+        )
+    else:
+        web_interface.custom_array_x_meters = custom_x
+        web_interface.custom_array_y_meters = custom_y
 
     web_interface.module_signal_processor.custom_array_x = web_interface.custom_array_x_meters / wavelength
     web_interface.module_signal_processor.custom_array_y = web_interface.custom_array_y_meters / wavelength
