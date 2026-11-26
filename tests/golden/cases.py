@@ -6,9 +6,7 @@ F_OFF = synth.F_OFF
 UCA_XY_M = tuple(tuple(axis) for axis in synth.element_positions("UCA"))
 
 # Cases whose stored output is known to be wrong today. A fix shows up as an intended change in the diff table.
-KNOWN_BUGS = {
-    "offset30/UCA/MUSIC/FBA/123deg": "P-03",
-}
+KNOWN_BUGS = {}
 
 # Cases whose reduced spectrum (row 1, the measured channel) is stored too.
 SPECTRUM_CASES = {

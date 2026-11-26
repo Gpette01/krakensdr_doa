@@ -178,7 +178,7 @@ Not present anywhere in the chain: DC removal, time gating to the burst, trackin
 | Angle | Counter-clockwise from the array x axis, toward the source | scanning vectors |
 | ULA ambiguity | `θ` and `180 - θ` are the same to the array | physics |
 | Spacing unit | Wavelengths at `fc`, rescaled per VFO by `f_v / fc` | `sp:974` |
-| Array offset | **Applied four different ways** (see finding P-03) | `sp:1614,1638,1485,1490` |
+| Array offset | Applied once after estimation on every path (M2-02): the spectrum is computed in the array frame, then `np.roll(P, -offset)`; ROOT-MUSIC reports (theta - offset) mod 360. Before M2-02 it was applied four different ways (finding P-03). | `estimate_DOA` |
 | Compass offset | Only used in recording file names | |
 | Bearing sent out | `360 - θ` in the CSV and Kerberos outputs, raw `θ` in XML, JSON and POST outputs | `sp:759,792,821,1118` |
 | Frequency units | UI and `settings.json` in MHz, receiver and DSP in Hz, `doa.xml` in MHz, JSON in Hz | `kwi:64-66`, `sp:1100,1200` |

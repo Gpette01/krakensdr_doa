@@ -33,16 +33,16 @@ def grid_cases():
 
 
 def offset_cases():
-    """Array offset 30 degrees. The expected bearing is (true - offset), the sign of the grid path (assumption A5)."""
-    wrong_path = xfail("P-03: array_offset is applied differently on this path")
+    """Array offset 30 degrees. The expected bearing is (true - offset), the sign of the grid path (assumption A5).
+    The virtual array and Custom paths failed before M2-02 (P-03)."""
     params = []
     for label, geometry, algorithm, decorrelation, angle, marks in (
         ("UCA/MUSIC", "UCA", "MUSIC", "Off", 123, []),
         ("ULA/MUSIC", "ULA", "MUSIC", "Off", 65, []),
         ("ULA/ROOT-MUSIC", "ULA", "ROOT-MUSIC", "Off", 65, []),
-        ("UCA/MUSIC/FBA (virtual array)", "UCA", "MUSIC", "FBA", 123, [wrong_path]),
-        ("UCA/ROOT-MUSIC (virtual array)", "UCA", "ROOT-MUSIC", "Off", 123, [wrong_path]),
-        ("Custom/MUSIC", "Custom", "MUSIC", "Off", 123, [wrong_path]),
+        ("UCA/MUSIC/FBA (virtual array)", "UCA", "MUSIC", "FBA", 123, []),
+        ("UCA/ROOT-MUSIC (virtual array)", "UCA", "ROOT-MUSIC", "Off", 123, []),
+        ("Custom/MUSIC", "Custom", "MUSIC", "Off", 123, []),
     ):
         custom = UCA_XY_M if geometry == "Custom" else None
         case = Case(
@@ -56,6 +56,38 @@ def offset_cases():
         )
         params.append(pytest.param(case, marks=marks, id=case.label))
     return params
+
+
+OFFSET_TABLE_PATHS = {
+    # label: (geometry, algorithm, decorrelation)
+    "MUSIC": ("UCA", "MUSIC", "Off"),
+    "MUSIC+FBA": ("UCA", "MUSIC", "FBA"),
+    "ROOT-MUSIC": ("UCA", "ROOT-MUSIC", "Off"),
+    "Custom(UCA xy)": ("Custom", "MUSIC", "Off"),
+}
+OFFSET_TABLE_OFFSETS = (0, 30, 90)
+
+
+def offset_table_case(path, offset):
+    geometry, algorithm, decorrelation = OFFSET_TABLE_PATHS[path]
+    return Case(
+        f"offset table/{path}/offset{offset}/37deg",
+        geometry,
+        algorithm,
+        [(37, 0, F_OFF)],
+        decorrelation=decorrelation,
+        array_offset=offset,
+        custom_xy_m=UCA_XY_M if geometry == "Custom" else None,
+    )
+
+
+def offset_table_cases():
+    """M2-02 spec table: a UCA source at 37 degrees reads 37, 7 and 307 at offsets 0, 30 and 90 on every path."""
+    return [
+        pytest.param(offset_table_case(path, offset), id=f"{path}/offset{offset}")
+        for path in OFFSET_TABLE_PATHS
+        for offset in OFFSET_TABLE_OFFSETS
+    ]
 
 
 def frequency_cases():
@@ -255,6 +287,7 @@ GROUPS = {
     "custom": custom_cases(),
     "overestimated": overestimated_source_cases(),
     "virtual_array": virtual_array_cases(),
+    "offset_table": offset_table_cases(),
     "ula_direction": ula_direction_cases(),
     "ula_offset_direction": ula_offset_direction_cases(),
     "ula_root_music_source_count": ula_root_music_source_count_cases(),
@@ -294,9 +327,20 @@ def test_bearing_matches_truth(results, case):
     assert_true_bearing(results[case.label], ula_mirror_allowed=case.geometry == "ULA")
 
 
-@pytest.mark.parametrize("case", GROUPS["offset"])
+@pytest.mark.parametrize("case", GROUPS["offset"] + GROUPS["offset_table"])
 def test_array_offset_is_applied_once_with_one_sign(results, case):
     assert_true_bearing(results[case.label], ula_mirror_allowed=case.geometry == "ULA")
+
+
+@pytest.mark.parametrize("offset", [30, 90])
+@pytest.mark.parametrize("path", list(OFFSET_TABLE_PATHS))
+def test_spectrum_rotates_with_the_offset(results, path, offset):
+    """M2-02: the 360-value spectrum (UI plot, CSV and JSON arrays, confidence) turns with the bearing:
+    value i at offset o is value i + o at offset 0."""
+    rotated = np.asarray(results[offset_table_case(path, offset).label].packet["DoA Result"], dtype=np.float64)
+    reference = np.asarray(results[offset_table_case(path, 0).label].packet["DoA Result"], dtype=np.float64)
+    worst = np.max(np.abs(rotated - np.roll(reference, -offset)))
+    assert worst <= 1e-3, f"largest difference {worst:.4f} dB"
 
 
 OVERESTIMATED_TOLERANCE_DEG = 2.0

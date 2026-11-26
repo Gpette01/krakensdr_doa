@@ -1079,19 +1079,20 @@ class SignalProcessor(threading.Thread):
 
         frq_ratio = vfo_freq / self.module_receiver.daq_center_freq
         inter_element_spacing = self.DOA_inter_elem_space * frq_ratio
+        # Every path estimates in the array frame and applies the offset once at the end: the paths used to add it
+        # in degrees, in radians, with the opposite sign, or not at all (finding P-03).
+        offset = int(self.array_offset)
 
         if antennas_alignment == "ULA":
-            scanning_vectors = gen_scanning_vectors(
-                M, inter_element_spacing, antennas_alignment, int(self.array_offset)
-            )
+            scanning_vectors = gen_scanning_vectors(M, inter_element_spacing, antennas_alignment)
         elif antennas_alignment == "UCA":
             # The radius itself: the spacing the UI stores for a UCA is a chord that depends on a channel count
             # (finding P-15).
             radius_wavelengths = self.DOA_UCA_radius_m * vfo_freq / SPEED_OF_LIGHT_SHORTCUT
-            scanning_vectors = gen_scanning_vectors(M, radius_wavelengths, antennas_alignment, int(self.array_offset))
+            scanning_vectors = gen_scanning_vectors(M, radius_wavelengths, antennas_alignment)
         elif antennas_alignment == "VULA":
             L = R.shape[0] // 2
-            scanning_vectors = gen_scanning_vectors_phase_modes_space(L, self.array_offset)
+            scanning_vectors = gen_scanning_vectors_phase_modes_space(L)
         elif antennas_alignment == "Custom":
             scanning_vectors = gen_scanning_vectors_custom(
                 M, self.custom_array_x * frq_ratio, self.custom_array_y * frq_ratio
@@ -1116,37 +1117,34 @@ class SignalProcessor(threading.Thread):
             self.DOA = DOA_MUSIC_res
         if algorithm == "ROOT-MUSIC":
             if antennas_alignment == "VULA":
-                doas = doa_root_music(R, signal_dimension, self.array_offset)
+                doas = (doa_root_music(R, signal_dimension) - offset) % 360
             else:
-                doas = ula_root_music(
-                    R, signal_dimension, inter_element_spacing, self.ula_direction, int(self.array_offset)
-                )
+                doas = ula_root_music(R, signal_dimension, inter_element_spacing, self.ula_direction, offset)
             self.DOA = normalized_gaussian(self.DOA_theta, doas, DEFAULT_ROOT_MUSIC_STD_DEGREES)
             # since roots are sorted based on how close they are to the unit circle,
             # which in turn is proportional to SNR,
             # then the last element should correspond to the strongest signal
             theta_0 = doas[-1]
 
-        # ULA Array, choose bewteen the full omnidirecitonal 360 data, or forward/backward data only.
-        # ROOT-MUSIC has already chosen its half: its Gaussian is drawn at the bearing only (finding P-02).
+        # ULA Array, choose bewteen the full omnidirecitonal 360 data, or forward/backward data only, in the array
+        # frame. ROOT-MUSIC has already chosen its half: its Gaussian is drawn at the bearing only (finding P-02).
         if self.DOA_ant_alignment == "ULA" and algorithm != "ROOT-MUSIC":
-            thetas = (
-                np.linspace(0, 359, 360) - self.array_offset
-            ) % 360  # Rotate array with offset (in reverse to compensate for rotation done in gen_scanning_vectors)
             if self.ula_direction == "Forward":
-                self.DOA[thetas[90:270].astype(int)] = min(self.DOA)
-            # self.DOA[90:270] = min(self.DOA)
+                self.DOA[90:270] = min(self.DOA)
             if self.ula_direction == "Backward":
                 min_val = min(self.DOA)
-                self.DOA[thetas[0:90].astype(int)] = min_val
-                self.DOA[thetas[270:360].astype(int)] = min_val
+                self.DOA[0:90] = min_val
+                self.DOA[270:360] = min_val
 
         if algorithm != "ROOT-MUSIC":
+            # Output frame: value i is the array-frame value i + offset. This one array feeds the plot, the CSV and
+            # JSON spectrum arrays and the confidence, so the spectrum turns with the bearing.
+            self.DOA = np.roll(self.DOA, -offset)
             peak = int(np.argmax(self.DOA))
             if self.DOA_ant_alignment == "ULA" and self.ula_direction == "Both":
                 # The ULA spectrum has two mirrored, equal peaks; report the smaller output angle, as ROOT-MUSIC does,
                 # instead of whichever peak rounding makes larger.
-                peak = min(peak, (180 - 2 * int(self.array_offset) - peak) % 360)
+                peak = min(peak, (180 - 2 * offset - peak) % 360)
             theta_0 = self.DOA_theta[peak]
 
         return theta_0
@@ -1587,7 +1585,7 @@ def root_music_roots(r, signal_dimension):
 
 # Root-MUSIC on the virtual array (phase mode space): arg z is the bearing itself.
 @njit(fastmath=True, cache=True)
-def doa_root_music(r, signal_dimension, array_angle_offset):
+def doa_root_music(r, signal_dimension):
     M = r.shape[0]
     all_roots = root_music_roots(r, signal_dimension)
 
@@ -1598,8 +1596,7 @@ def doa_root_music(r, signal_dimension, array_angle_offset):
     args = np.angle(valid_roots)
 
     doas = to_zero_to_2pi(args)
-    doas_deg = np.rad2deg(doas) + array_angle_offset
-    return doas_deg
+    return np.rad2deg(doas)
 
 
 def ula_bearing(phi_deg, ula_direction, offset):
@@ -1751,19 +1748,19 @@ def toeplitzify(R: np.ndarray) -> np.ndarray:
 
 # LRU cache memoize about 1000x faster.
 @lru_cache(maxsize=32)
-def gen_scanning_vectors_phase_modes_space(L, offset):
+def gen_scanning_vectors_phase_modes_space(L):
     thetas = np.deg2rad(np.linspace(0, 359, 360, dtype=float))
     M = np.arange(-L, L + 1, dtype=float)
     scanning_vectors = np.zeros((M.size, thetas.size), dtype=np.complex64)
     for i in range(thetas.size):
-        scanning_vectors[:, i] = np.exp(1.0j * M * (thetas[i] + offset))
+        scanning_vectors[:, i] = np.exp(1.0j * M * thetas[i])
 
     return np.ascontiguousarray(scanning_vectors)
 
 
 # LRU cache memoize about 1000x faster.
 @lru_cache(maxsize=32)
-def gen_scanning_vectors(M, size_wavelengths, type, offset):
+def gen_scanning_vectors(M, size_wavelengths, type):
     """size_wavelengths: the element spacing of a ULA, or the radius of a UCA, in wavelengths."""
     thetas = np.linspace(
         0, 359, 360
@@ -1778,7 +1775,7 @@ def gen_scanning_vectors(M, size_wavelengths, type, offset):
     scanning_vectors = np.zeros((M, thetas.size), dtype=np.complex64)
     for i in range(thetas.size):
         scanning_vectors[:, i] = np.exp(
-            1j * 2 * np.pi * (x * np.cos(np.deg2rad(thetas[i] + offset)) + y * np.sin(np.deg2rad(thetas[i] + offset)))
+            1j * 2 * np.pi * (x * np.cos(np.deg2rad(thetas[i])) + y * np.sin(np.deg2rad(thetas[i])))
         )
 
     return np.ascontiguousarray(scanning_vectors)
