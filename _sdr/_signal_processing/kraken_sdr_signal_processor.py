@@ -49,7 +49,7 @@ from kraken_sdr_receiver import GET_IQ_NOT_CONNECTED, ReceiverRTLSDR
 from numba import float32, njit, vectorize
 from pyargus import directionEstimation as de
 from scipy import fft, signal
-from signal_utils import can_store_file, fm_demod, write_wav
+from signal_utils import WAV_RATE, VfoStreamState, can_store_file, fm_demod, wav_audio, write_wav
 from variables import (
     SOFTWARE_GIT_SHORT_HASH,
     SOFTWARE_VERSION,
@@ -166,6 +166,7 @@ class SignalProcessor(threading.Thread):
         # One list per VFO: [[]] * n would make all VFOs share a single list (finding P-24).
         self.vfo_theta_channel = [[] for _ in range(self.max_vfos)]
         self.vfo_iq_channel = [np.array([])] * self.max_vfos
+        self.vfo_streams = [VfoStreamState() for _ in range(self.max_vfos)]
         self.vfo_blocked = [False] * self.max_vfos
         self.vfo_time = [0] * self.max_vfos
         self.max_demod_timeout = 60
@@ -640,8 +641,7 @@ class SignalProcessor(threading.Thread):
                                     write_freq = int(self.vfo_freq[i])
                                     # Do channelization
                                     if self.vfo_demod_modes[i] == "FM":
-                                        decimate_sampling_freq = 48_000
-                                        decimation_factor = int(sampling_freq / decimate_sampling_freq)
+                                        decimation_factor = int(sampling_freq / WAV_RATE)
 
                                     fir_order_factor = max(self.vfo_fir_order_factor[i], DEFAULT_VFO_FIR_ORDER_FACTOR)
                                     vfo_channel = channelize(
@@ -692,13 +692,20 @@ class SignalProcessor(threading.Thread):
                                         self.vfo_demod_channel[i] = np.array([])
                                         self.vfo_theta_channel[i] = []
                                         self.vfo_iq_channel[i] = np.array([])
-                                    elif self.vfo_demod_modes[i] == "FM":
-                                        fm_demod_channel = fm_demod(iq_channel, decimate_sampling_freq, self.vfo_bw[i])
-                                        self.vfo_demod_channel[i] = np.concatenate(
-                                            (self.vfo_demod_channel[i], fm_demod_channel)
-                                        )
-                                    elif self.vfo_iq_enabled[i]:
-                                        self.vfo_iq_channel[i] = np.concatenate((self.vfo_iq_channel[i], iq_channel))
+                                    elif self.vfo_demod_modes[i] == "FM" or self.vfo_iq_enabled[i]:
+                                        channel_rate = sampling_freq / decimation_factor  # 50 kHz, not 48, at q=16
+                                        iq_channel = self.continue_vfo_stream(i, iq_channel, freq, channel_rate)
+                                        if self.vfo_demod_modes[i] == "FM":
+                                            fm_demod_channel = fm_demod(
+                                                iq_channel, channel_rate, self.vfo_bw[i], self.vfo_streams[i]
+                                            )
+                                            self.vfo_demod_channel[i] = np.concatenate(
+                                                (self.vfo_demod_channel[i], fm_demod_channel)
+                                            )
+                                        else:
+                                            self.vfo_iq_channel[i] = np.concatenate(
+                                                (self.vfo_iq_channel[i], iq_channel)
+                                            )
                                 else:
                                     self.vfo_time[i] = 0
                                     self.vfo_blocked[i] = False
@@ -706,8 +713,10 @@ class SignalProcessor(threading.Thread):
                                     iq_channel = self.vfo_iq_channel[i]
                                     thetas = self.vfo_theta_channel[i]
                                     vfo_freq = int(self.vfo_freq[i])
+                                    settings = self.vfo_streams[i].settings
+                                    audio_rate = settings[2] if settings is not None else WAV_RATE
                                     self.fm_demod_channel_list.append(
-                                        (now_dt_str, vfo_freq, fm_demod_channel, iq_channel, thetas)
+                                        (now_dt_str, vfo_freq, fm_demod_channel, iq_channel, thetas, audio_rate)
                                     )
                                     self.vfo_demod_channel[i] = np.array([])
                                     self.vfo_theta_channel[i] = []
@@ -734,6 +743,7 @@ class SignalProcessor(threading.Thread):
                                 fm_demod_channel,
                                 iq_channel,
                                 thetas,
+                                audio_rate,
                             ) in self.fm_demod_channel_list:
                                 store_demod_channel = fm_demod_channel.size > 0
                                 store_iq_channel = iq_channel.size > 0
@@ -752,11 +762,7 @@ class SignalProcessor(threading.Thread):
                                     record_file_name = f"{now_dt_str},FM_{vfo_freq / 1e6:.3f}MHz"
                                     filename = f"{self.wav_record_path}/{record_file_name},DOA_{doa_max_str}.wav"
                                     if can_store_file(self.wav_record_path):
-                                        write_wav(
-                                            filename,
-                                            48_000,
-                                            fm_demod_channel,
-                                        )
+                                        write_wav(filename, WAV_RATE, wav_audio(fm_demod_channel, audio_rate))
                                     else:
                                         self.logger.error(
                                             "No disk space left for storing %s, demodulation and recording disabled.",
@@ -969,6 +975,28 @@ class SignalProcessor(threading.Thread):
                 except Exception:
                     # Discard data, UI couldn't consume fast enough
                     pass
+
+    def continue_vfo_stream(self, i, iq_channel, freq, channel_rate):
+        """iq_channel with the mixer phase continued from the previous frame of VFO i.
+
+        channelize() restarts its mixer at t = 0 every frame, which puts a phase step between frames into the FM
+        audio and the IQ recording (finding P-21). The VFO state starts over when the frequency, the bandwidth or
+        the rate changes, or when a frame was skipped.
+        """
+        stream = self.vfo_streams[i]
+        settings = (freq, self.vfo_bw[i], channel_rate)
+        cpi_index = self.module_receiver.iq_header.cpi_index
+        if stream.settings != settings or stream.cpi_index is None or cpi_index != stream.cpi_index + 1:
+            stream.reset(settings)
+        stream.cpi_index = cpi_index
+        # complex64, so the IQ recording keeps its sample format.
+        continued = iq_channel * np.complex64(np.exp(-2j * np.pi * stream.mixer_cycles))
+        # The frame's real duration, not its decimated sample count: when the frame length is not a multiple of the
+        # DSP decimation, the decimated samples do not add up to the frame duration.
+        header = self.module_receiver.iq_header
+        frame_duration_s = header.cpi_length / header.sampling_freq
+        stream.mixer_cycles = (stream.mixer_cycles + freq * frame_duration_s) % 1.0
+        return continued
 
     def estimate_DOA(self, processed_signal, vfo_freq):
         """
