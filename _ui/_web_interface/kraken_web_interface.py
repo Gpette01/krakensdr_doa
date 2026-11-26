@@ -99,7 +99,7 @@ class WebInterface:
                 self.module_receiver.daq_center_freq
             )
         else:
-            self.module_signal_processor.DOA_UCA_radius_m = np.Infinity
+            self.module_signal_processor.DOA_UCA_radius_m = np.inf
             self.module_signal_processor.DOA_inter_elem_space = self.ant_spacing_meters / wavelength_m(
                 self.module_receiver.daq_center_freq
             )
@@ -108,11 +108,11 @@ class WebInterface:
         self.module_signal_processor.DOA_algorithm = dsp_settings.get("doa_method", "MUSIC")
         self.module_signal_processor.DOA_expected_num_of_sources = dsp_settings.get("expected_num_of_sources", 1)
 
-        self.custom_array_x_meters = np.float_(
-            dsp_settings.get("custom_array_x_meters", "0.21,0.06,-0.17,-0.17,0.07").split(",")
+        self.custom_array_x_meters = np.array(
+            dsp_settings.get("custom_array_x_meters", "0.21,0.06,-0.17,-0.17,0.07").split(","), dtype=np.float64
         )
-        self.custom_array_y_meters = np.float_(
-            dsp_settings.get("custom_array_y_meters", "0.00,-0.20,-0.12,0.12,0.20").split(",")
+        self.custom_array_y_meters = np.array(
+            dsp_settings.get("custom_array_y_meters", "0.00,-0.20,-0.12,0.12,0.20").split(","), dtype=np.float64
         )
         self.module_signal_processor.custom_array_x = self.custom_array_x_meters / wavelength_m(
             self.module_receiver.daq_center_freq

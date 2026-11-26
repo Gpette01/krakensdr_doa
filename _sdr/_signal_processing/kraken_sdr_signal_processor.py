@@ -125,7 +125,7 @@ class SignalProcessor(threading.Thread):
         # self.en_DOA_MUSIC    = False
         self.DOA_algorithm = "MUSIC"
         self.DOA_offset = 0
-        self.DOA_UCA_radius_m = np.Infinity
+        self.DOA_UCA_radius_m = np.inf
         self.DOA_inter_elem_space = 0.5
         self.DOA_ant_alignment = "ULA"
         self.ula_direction = "Both"

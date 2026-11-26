@@ -541,7 +541,7 @@ def update_dsp_params(
         )
         web_interface.module_signal_processor.DOA_inter_elem_space = inter_elem_spacing / wavelength
     else:
-        web_interface.module_signal_processor.DOA_UCA_radius_m = np.Infinity
+        web_interface.module_signal_processor.DOA_UCA_radius_m = np.inf
         web_interface.module_signal_processor.DOA_inter_elem_space = web_interface.ant_spacing_meters / wavelength
 
     ant_spacing_wavelength = round(web_interface.module_signal_processor.DOA_inter_elem_space, 3)
