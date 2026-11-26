@@ -96,7 +96,7 @@ def smoothing_limit_cases():
     for algorithm in ("MUSIC", "ROOT-MUSIC"):
         label = f"ULA/{algorithm}/FBSS/sources=4/65deg"
         case = Case(label, "ULA", algorithm, [(65, 0, F_OFF)], decorrelation="FBSS", expected_sources=4)
-        params.append(pytest.param(case, marks=[xfail("P-09: source count not clamped after FBSS")], id=label))
+        params.append(pytest.param(case, id=label))  # failed before M1-04 (P-09)
     return params
 
 

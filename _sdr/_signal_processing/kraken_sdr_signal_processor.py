@@ -232,9 +232,17 @@ class SignalProcessor(threading.Thread):
         self.last_write_time = [time.time()] * self.max_vfos
 
         self.adc_overdrive = False
+        # Keys of the warnings already logged by warn_once(), so a persistent condition logs once, not every frame.
+        self.warnings_logged = set()
         self.number_of_correlated_sources = []
         self.snrs = []
         self.dropped_frames = 0
+
+    def warn_once(self, key, message, *args):
+        """Logs a warning the first time `key` is seen."""
+        if key not in self.warnings_logged:
+            self.warnings_logged.add(key)
+            self.logger.warning(message, *args)
 
     @property
     def vfo_demod_modes(self):
@@ -963,6 +971,20 @@ class SignalProcessor(threading.Thread):
 
         M = R.shape[0]
 
+        # The UI offers up to channel_number - 1 sources, but spatial smoothing and the virtual array leave a smaller
+        # matrix, and MUSIC and ROOT-MUSIC need at least one noise eigenvector (finding P-09).
+        signal_dimension = min(self.DOA_expected_num_of_sources, M - 1)
+        if signal_dimension < self.DOA_expected_num_of_sources:
+            self.warn_once(
+                ("source count clamp", self.DOA_expected_num_of_sources, M),
+                "Expected %d sources, but the %dx%d correlation matrix supports at most %d; using %d.",
+                self.DOA_expected_num_of_sources,
+                M,
+                M,
+                M - 1,
+                signal_dimension,
+            )
+
         # If rank of the correlation matrix is not equal to its full one,
         # then we are likely dealing with correlated sources and (or) low SNR signals
         number_of_correlated_sources = M - np.linalg.matrix_rank(R)
@@ -1004,15 +1026,11 @@ class SignalProcessor(threading.Thread):
         if self.DOA_algorithm == "TNA":
             self.DOA = DOA_TNA(R, scanning_vectors)
         if self.DOA_algorithm == "MUSIC":  # self.en_DOA_MUSIC:
-            DOA_MUSIC_res = DOA_MUSIC(
-                R, scanning_vectors, signal_dimension=self.DOA_expected_num_of_sources
-            )  # de.DOA_MUSIC(R, scanning_vectors, signal_dimension = 1)
+            DOA_MUSIC_res = DOA_MUSIC(R, scanning_vectors, signal_dimension=signal_dimension)
             self.DOA = DOA_MUSIC_res
         if self.DOA_algorithm == "ROOT-MUSIC":
             is_vula = True if antennas_alignment == "VULA" else False
-            doas = doa_root_music(
-                R, self.DOA_expected_num_of_sources, is_vula, inter_element_spacing, self.array_offset
-            )
+            doas = doa_root_music(R, signal_dimension, is_vula, inter_element_spacing, self.array_offset)
             self.DOA = normalized_gaussian(self.DOA_theta, doas, DEFAULT_ROOT_MUSIC_STD_DEGREES)
             # since roots are sorted based on how close they are to the unit circle,
             # which in turn is proportional to SNR,
